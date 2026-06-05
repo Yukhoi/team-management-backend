@@ -1,0 +1,45 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/team_management?currentSchema=identity
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: identity
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:your-dev-secret-change-me-at-least-32-bytes}
+    access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
+    refresh-token-expiration-days: 7
+  init:
+    admin-username: ${INIT_ADMIN_USERNAME:admin}
+    admin-password: ${INIT_ADMIN_PASSWORD:123456}
+    admin-display-name: ${INIT_ADMIN_DISPLAY_NAME:System Administrator}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha

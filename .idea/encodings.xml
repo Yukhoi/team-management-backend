@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/audit-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/audit-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/gateway-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/gateway-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/identity-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/identity-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/match-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/match-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/statistics-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/statistics-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/team-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/team-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/tournament-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/tournament-service/src/main/resources" charset="UTF-8" />
+  </component>
+</project>

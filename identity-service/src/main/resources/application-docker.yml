@@ -1,0 +1,39 @@
+server:
+  port: 8087
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/team_management?currentSchema=identity}
+    username: ${SPRING_DATASOURCE_USERNAME:team_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:team_password}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        default_schema: identity
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:your-dev-secret-change-me-at-least-32-bytes}
+    access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
+    refresh-token-expiration-days: ${APP_JWT_REFRESH_TOKEN_EXPIRATION_DAYS:7}
+  init:
+    admin-username: ${INIT_ADMIN_USERNAME:admin}
+    admin-password: ${INIT_ADMIN_PASSWORD:123456}
+    admin-display-name: ${INIT_ADMIN_DISPLAY_NAME:System Administrator}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

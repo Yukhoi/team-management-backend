@@ -1,0 +1,26 @@
+server:
+  port: 8086
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/team_management?currentSchema=statistics}
+    username: ${SPRING_DATASOURCE_USERNAME:team_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:team_password}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        default_schema: statistics
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

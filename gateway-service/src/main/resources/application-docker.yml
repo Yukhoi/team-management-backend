@@ -1,0 +1,133 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      server:
+        webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOrigins:
+                  - ${FRONTEND_ALLOWED_ORIGINS:http://localhost:5173}
+                allowedMethods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowedHeaders:
+                  - "*"
+                exposedHeaders:
+                  - Authorization
+                allowCredentials: true
+          routes:
+            - id: identity-service
+              uri: ${IDENTITY_SERVICE_URL:http://identity-service:8087}
+              predicates:
+                - Path=/api/auth/**,/api/users/**,/api/roles/**
+
+            - id: team-service
+              uri: ${TEAM_SERVICE_URL:http://team-service:8082}
+              predicates:
+                - Path=/api/teams,/api/teams/**,/api/players,/api/players/**
+
+            - id: audit-service
+              uri: ${AUDIT_SERVICE_URL:http://audit-service:8083}
+              predicates:
+                - Path=/api/audit/**
+
+            - id: match-service
+              uri: ${MATCH_SERVICE_URL:http://match-service:8084}
+              predicates:
+                - Path=/api/v1/matches/**,/api/v1/goals/**
+
+            - id: tournament-service
+              uri: ${TOURNAMENT_SERVICE_URL:http://tournament-service:8085}
+              predicates:
+                - Path=/api/tournaments,/api/tournaments/**
+
+            - id: statistics-service
+              uri: ${STATISTICS_SERVICE_URL:http://statistics-service:8086}
+              predicates:
+                - Path=/api/statistics/**
+
+            - id: identity-openapi
+              uri: ${IDENTITY_SERVICE_URL:http://identity-service:8087}
+              predicates:
+                - Path=/openapi/identity/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: team-openapi
+              uri: ${TEAM_SERVICE_URL:http://team-service:8082}
+              predicates:
+                - Path=/openapi/team/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: tournament-openapi
+              uri: ${TOURNAMENT_SERVICE_URL:http://tournament-service:8085}
+              predicates:
+                - Path=/openapi/tournament/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: match-openapi
+              uri: ${MATCH_SERVICE_URL:http://match-service:8084}
+              predicates:
+                - Path=/openapi/match/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: statistics-openapi
+              uri: ${STATISTICS_SERVICE_URL:http://statistics-service:8086}
+              predicates:
+                - Path=/openapi/statistics/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+            - id: audit-openapi
+              uri: ${AUDIT_SERVICE_URL:http://audit-service:8083}
+              predicates:
+                - Path=/openapi/audit/v3/api-docs
+              filters:
+                - SetPath=/v3/api-docs
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:your-dev-secret-change-me-at-least-32-bytes}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    urls:
+      - name: Gateway Service API
+        url: /v3/api-docs
+      - name: Identity Service API
+        url: /openapi/identity/v3/api-docs
+      - name: Team Service API
+        url: /openapi/team/v3/api-docs
+      - name: Tournament Service API
+        url: /openapi/tournament/v3/api-docs
+      - name: Match Service API
+        url: /openapi/match/v3/api-docs
+      - name: Statistics Service API
+        url: /openapi/statistics/v3/api-docs
+      - name: Audit Service API
+        url: /openapi/audit/v3/api-docs
