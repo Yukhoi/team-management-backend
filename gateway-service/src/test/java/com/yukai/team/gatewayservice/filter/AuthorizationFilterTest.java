@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuthorizationFilterTest {
 
-    private final AuthorizationFilter authorizationFilter = new AuthorizationFilter();
+    private final AuthorizationFilter authorizationFilter = new AuthorizationFilter(true);
 
     @Test
     void should_allow_player_read_request() {
@@ -154,6 +154,32 @@ class AuthorizationFilterTest {
         assertTrue(routed.get());
     }
 
+@Test
+void should_require_admin_for_swagger_when_swagger_public_disabled() {
+    AuthorizationFilter prodAuthorizationFilter = new AuthorizationFilter(false);
+
+    ServerWebExchange playerExchange = authenticatedExchange(
+            HttpMethod.GET,
+            "/v3/api-docs",
+            List.of("PLAYER")
+    );
+
+    AuthorizationException exception = assertThrows(
+            AuthorizationException.class,
+            () -> prodAuthorizationFilter.filter(playerExchange, successfulChain(new AtomicBoolean(false))).block()
+    );
+    assertTrue("Access denied".equals(exception.getMessage()));
+
+    AtomicBoolean routed = new AtomicBoolean(false);
+    ServerWebExchange adminExchange = authenticatedExchange(
+            HttpMethod.GET,
+            "/v3/api-docs",
+            List.of("ADMIN")
+    );
+
+    assertDoesNotThrow(() -> prodAuthorizationFilter.filter(adminExchange, successfulChain(routed)).block());
+    assertTrue(routed.get());
+}
     private ServerWebExchange authenticatedExchange(HttpMethod method, String path, List<String> roles) {
         ServerWebExchange exchange = exchange(method, path);
         exchange.getAttributes().put(
