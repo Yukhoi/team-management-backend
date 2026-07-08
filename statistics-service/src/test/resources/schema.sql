@@ -90,6 +90,7 @@ create table statistics.leaderboard_projection
     entity_id                  bigint                   not null,
     entity_name_snapshot       varchar(100)             not null,
     metric_value               integer                  not null,
+    appearance_count           integer default 0        not null,
     updated_at                 timestamp with time zone not null,
     constraint uk_leaderboard_board_season_tournament_entity
         unique (board_type, season, tournament_id, entity_id)
