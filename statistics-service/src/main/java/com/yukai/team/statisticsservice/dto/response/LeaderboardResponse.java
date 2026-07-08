@@ -30,4 +30,6 @@ public class LeaderboardResponse {
     private String season;
     @Schema(description = "Tournament ID", example = "1")
     private Long tournamentId;
+    @Schema(description = "Appearance count", example = "12")
+    private Integer appearanceCount;
 }

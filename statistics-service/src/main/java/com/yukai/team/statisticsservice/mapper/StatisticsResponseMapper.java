@@ -53,6 +53,7 @@ public class StatisticsResponseMapper {
                 .boardType(projection.getBoardType())
                 .season(projection.getSeason())
                 .tournamentId(projection.getTournamentId())
+                .appearanceCount(projection.getAppearanceCount())
                 .build();
     }
 

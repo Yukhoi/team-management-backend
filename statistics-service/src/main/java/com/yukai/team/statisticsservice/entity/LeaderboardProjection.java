@@ -71,6 +71,9 @@ public class LeaderboardProjection {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "appearance_count", nullable = false)
+    private Integer appearanceCount;
+
     @PrePersist
     @PreUpdate
     void updateTimestamp() {

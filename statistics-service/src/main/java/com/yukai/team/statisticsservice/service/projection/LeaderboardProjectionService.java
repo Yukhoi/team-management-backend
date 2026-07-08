@@ -69,6 +69,7 @@ public class LeaderboardProjectionService {
                         .entityId(stat.getPlayerId())
                         .entityNameSnapshot(stat.getPlayerNameSnapshot())
                         .metricValue(metricExtractor.applyAsInt(stat))
+                        .appearanceCount(stat.getAppearances())
                         .build())
                 .toList();
         leaderboardProjectionRepository.saveAll(entries);
