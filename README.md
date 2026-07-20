@@ -6,8 +6,71 @@ A production-oriented football team management backend built with Spring Boot mi
 
 This repository is designed to be readable as a Java backend portfolio project and practical as a deployment-ready microservice backend.
 
+## 🔗 Live Demo & Links
+
+| Resource | Link |
+| --- | --- |
+| 🚀 Frontend | [https://yukhoi.github.io/team-management-frontend/](https://yukhoi.github.io/team-management-frontend/) |
+| 🔌 Backend API | [http://yexiaoparis-management.duckdns.org](http://yexiaoparis-management.duckdns.org) |
+| 📚 OpenAPI Swagger | [http://yexiaoparis-management.duckdns.org/swagger-ui/index.html](http://yexiaoparis-management.duckdns.org/swagger-ui/index.html) |
+| ❤️ Gateway Health | [http://yexiaoparis-management.duckdns.org/actuator/health](http://yexiaoparis-management.duckdns.org/actuator/health) |
+| 🧾 OpenAPI JSON | [http://yexiaoparis-management.duckdns.org/v3/api-docs](http://yexiaoparis-management.duckdns.org/v3/api-docs) |
+| 🖥️ Frontend Repository | [github.com/Yukhoi/team-management-frontend](https://github.com/Yukhoi/team-management-frontend) |
+| 🧩 Backend Repository | [github.com/Yukhoi/team-management-backend](https://github.com/Yukhoi/team-management-backend) |
+
+## ✨ Project Highlights
+
+| Area | Highlights |
+| --- | --- |
+| Backend | Spring Boot Microservices, Spring Cloud Gateway, JWT Authentication, RBAC Authorization |
+| Architecture | Kafka Event-driven Architecture, Transactional Outbox Pattern, Idempotent Consumer |
+| Data & Cache | PostgreSQL multi-schema persistence, Redis Cache |
+| API | OpenAPI Documentation, Interactive Swagger UI, generated OpenAPI JSON |
+| Deployment | Docker Compose Deployment, Nginx Reverse Proxy, DuckDNS, Public Production Deployment |
+| Frontend | Vue 3, TypeScript, Vite, Pinia, Element Plus, Axios, OpenAPI generated client |
+
+## 🌍 API Base URLs
+
+| Environment | Base URL |
+| --- | --- |
+| Development | `http://localhost:8088` |
+| Production | `http://yexiaoparis-management.duckdns.org` |
+
+## 📚 OpenAPI
+
+SpringDoc OpenAPI is implemented for every backend service and aggregated through the gateway Swagger UI. Each service owns its per-service OpenAPI definition, while the gateway provides the public aggregated documentation entry point.
+
+| OpenAPI Resource | URL |
+| --- | --- |
+| Interactive Swagger UI | `http://localhost:8088/swagger-ui.html` |
+| Production Swagger UI | [http://yexiaoparis-management.duckdns.org/swagger-ui/index.html](http://yexiaoparis-management.duckdns.org/swagger-ui/index.html) |
+| Generated OpenAPI JSON | [http://yexiaoparis-management.duckdns.org/v3/api-docs](http://yexiaoparis-management.duckdns.org/v3/api-docs) |
+
+Gateway aggregated OpenAPI routes:
+
+```text
+http://localhost:8088/openapi/identity/v3/api-docs
+http://localhost:8088/openapi/team/v3/api-docs
+http://localhost:8088/openapi/tournament/v3/api-docs
+http://localhost:8088/openapi/match/v3/api-docs
+http://localhost:8088/openapi/statistics/v3/api-docs
+http://localhost:8088/openapi/audit/v3/api-docs
+```
+
+Generated OpenAPI JSON files are also available under `openapi/` and can be used by the frontend OpenAPI generated client.
+
+Production behavior:
+
+- The current public production Swagger URL is available through the gateway.
+- `docker-compose.prod.yml` can set `GATEWAY_SWAGGER_PUBLIC=false` through `gateway.swagger.public`.
+- When Swagger is not public, `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`, `/openapi/**`, and `/webjars/**` require the `ADMIN` role.
+
 ## 📌 Table of Contents
 
+- [Live Demo & Links](#-live-demo--links)
+- [Project Highlights](#-project-highlights)
+- [API Base URLs](#-api-base-urls)
+- [OpenAPI](#-openapi)
 - [Overview](#-overview)
 - [Technology Stack](#-technology-stack)
 - [System Architecture](#-system-architecture)
@@ -17,9 +80,9 @@ This repository is designed to be readable as a Java backend portfolio project a
 - [Reliability Patterns](#-reliability-patterns)
 - [Security Architecture](#-security-architecture)
 - [RBAC Matrix](#-rbac-matrix)
-- [OpenAPI](#-openapi)
 - [Quick Start](#-quick-start)
 - [Docker Deployment](#-docker-deployment)
+- [Live Production Deployment](#-live-production-deployment)
 - [Production Deployment](#-production-deployment)
 - [Current Status](#-current-status)
 - [Roadmap](#-roadmap)
@@ -63,19 +126,22 @@ The project uses synchronous REST APIs for user-facing operations and asynchrono
 - Nginx
 - Let's Encrypt
 
-### Frontend Planned
+### Frontend
 
 - Vue 3
 - TypeScript
 - Vite
 - Pinia
 - Element Plus
+- Axios
+- OpenAPI generated client
+- Deployed on GitHub Pages
 
 ## 🏗️ System Architecture
 
 ```mermaid
 flowchart TB
-    Frontend[Frontend<br/>Vue 3 Planned] --> Nginx[Nginx<br/>HTTPS Reverse Proxy]
+    Frontend[GitHub Pages<br/>Vue 3 Frontend] --> Nginx[Nginx<br/>Reverse Proxy]
     Nginx --> Gateway[gateway-service<br/>:8088]
 
     Gateway --> Identity[identity-service<br/>:8087]
@@ -239,34 +305,6 @@ Notes:
 - `GET /actuator/health` is public through the gateway.
 - In production, `gateway.swagger.public=false` makes Swagger/OpenAPI ADMIN-only.
 
-## 📚 OpenAPI
-
-SpringDoc OpenAPI is implemented for all backend services and aggregated through the gateway Swagger UI.
-
-Local Swagger UI:
-
-```text
-http://localhost:8088/swagger-ui.html
-```
-
-Aggregated OpenAPI routes through gateway:
-
-```text
-http://localhost:8088/openapi/identity/v3/api-docs
-http://localhost:8088/openapi/team/v3/api-docs
-http://localhost:8088/openapi/tournament/v3/api-docs
-http://localhost:8088/openapi/match/v3/api-docs
-http://localhost:8088/openapi/statistics/v3/api-docs
-http://localhost:8088/openapi/audit/v3/api-docs
-```
-
-Generated OpenAPI JSON files are also available under `openapi/`.
-
-Production behavior:
-
-- `docker-compose.prod.yml` sets `GATEWAY_SWAGGER_PUBLIC=false` by default through `gateway.swagger.public`.
-- When Swagger is not public, `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`, `/openapi/**`, and `/webjars/**` require the `ADMIN` role.
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -384,7 +422,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 Production stack includes:
 
 - Nginx
-- HTTPS-ready reverse proxy configuration
+- HTTP reverse proxy configuration with HTTPS-ready Nginx support
 - PostgreSQL
 - Kafka
 - Redis
@@ -398,13 +436,32 @@ Production stack includes:
 
 Production characteristics:
 
-- Only Nginx exposes `80` and `443` publicly.
+- Only Nginx exposes public HTTP/HTTPS ports.
 - Backend services use Docker internal networking.
 - PostgreSQL, Kafka, and Redis are not publicly exposed.
-- Swagger/OpenAPI is ADMIN-only by default.
-- TLS certificates are mounted from `/etc/letsencrypt`.
+- Swagger/OpenAPI can be restricted to ADMIN users in production.
+- TLS certificates are mounted from `/etc/letsencrypt` when HTTPS is enabled.
 
-## 🌐 Production Deployment
+## 🌐 Live Production Deployment
+
+The backend is publicly deployed and reachable through the DuckDNS production endpoint:
+
+```text
+http://yexiaoparis-management.duckdns.org
+```
+
+Current production setup:
+
+| Component | Status |
+| --- | --- |
+| Docker Compose | Running production backend stack |
+| Nginx Reverse Proxy | Public entry point for gateway traffic |
+| DuckDNS | Public DNS hostname |
+| Windows Host Deployment | Backend deployed on a Windows host |
+| Public HTTP Endpoint | Available |
+| HTTPS | In progress with Let's Encrypt + Certbot |
+
+## 🚢 Production Deployment
 
 Deployment documentation:
 
@@ -429,40 +486,31 @@ Important production environment variables:
 - `INIT_ADMIN_USERNAME`
 - `INIT_ADMIN_PASSWORD`
 - `FRONTEND_ALLOWED_ORIGINS`
-- `GATEWAY_SWAGGER_PUBLIC=false`
+- `GATEWAY_SWAGGER_PUBLIC`
 
 ## ✅ Current Status
 
-Implemented:
-
-- Gateway Service
-- Identity Service
-- Team Service
-- Tournament Service
-- Match Service
-- Statistics Service
-- Audit Service
-- JWT Authentication
-- Refresh Token Flow
-- Gateway RBAC
-- OpenAPI / Swagger UI
-- PostgreSQL Multi-schema Setup
-- Kafka Event Publishing
-- Kafka Event Consumption
-- Transactional Outbox Pattern
-- Idempotent Consumers
-- Redis-backed Statistics Cache
-- Docker Compose Development Stack
-- Docker Compose Production Stack
-- Nginx HTTPS Deployment Entry
+| Area | Status | Notes |
+| --- | --- | --- |
+| Backend | ✅ Production ready | Spring Boot microservices behind `gateway-service` |
+| Frontend | ✅ Deployed | Vue 3 + TypeScript app deployed on GitHub Pages |
+| Docker | ✅ Complete | Development and production Docker Compose stacks |
+| OpenAPI | ✅ Complete | Gateway Swagger UI, per-service OpenAPI, generated JSON |
+| Authentication | ✅ Complete | JWT login, refresh tokens, logout, current user, password change |
+| Authorization | ✅ Complete | Gateway-level RBAC for ADMIN, COACH, and PLAYER |
+| Kafka | ✅ Complete | Event publishing, event consumption, outbox-backed producers |
+| Redis | ✅ Complete | Statistics dashboard/read-model cache |
+| Production Deployment | ✅ Live | Public HTTP backend endpoint via DuckDNS and Nginx |
+| HTTPS | 🚧 In progress | Let's Encrypt + Certbot setup underway |
+| CI/CD | 🗓️ Planned | Future pipeline for automated build, test, and deployment |
 
 ## 🗺️ Roadmap
 
 Planned improvements:
 
-- Vue 3 Frontend
 - CI/CD Pipeline
 - Monitoring and Alerting
+- HTTPS completion with Let's Encrypt + Certbot
 - Kubernetes Deployment Optional
 
 ## 📄 License
