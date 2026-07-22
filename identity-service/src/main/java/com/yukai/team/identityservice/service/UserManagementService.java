@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -84,12 +85,25 @@ public class UserManagementService {
         return toResponse(savedUser);
     }
 
-    public UserManagementResponse updateRoles(Long userId, UpdateUserRolesRequest request) {
+    @Transactional
+    public UserManagementResponse updateRoles(
+            Long userId,
+            UpdateUserRolesRequest request
+    ) {
         UserAccountEntity user = findUser(userId);
-        List<RoleEntity> roles = findRoles(normalizeRoles(request.getRoles(), request.getRoleCodes()));
+
+        Set<String> normalizedRoleCodes =
+                normalizeRoles(request.getRoles(), request.getRoleCodes());
+
+        List<RoleEntity> roles = findRoles(normalizedRoleCodes);
+
         replaceUserRoles(user, roles);
+
         refreshTokenService.revokeAllUserRefreshTokens(userId);
-        return toResponse(user);
+
+        UserAccountEntity updatedUser = findUser(userId);
+
+        return toResponse(updatedUser);
     }
 
     public UserManagementResponse resetPassword(Long userId, ResetPasswordRequest request) {
@@ -136,17 +150,41 @@ public class UserManagementService {
         return normalizedRoles;
     }
 
-    private void replaceUserRoles(UserAccountEntity user, List<RoleEntity> roles) {
-        List<UserRoleEntity> existingRoles = userRoleRepository.findByUserId(user.getId());
-        userRoleRepository.deleteAll(existingRoles);
+    private void replaceUserRoles(
+            UserAccountEntity user,
+            List<RoleEntity> requestedRoles
+    ) {
+        List<UserRoleEntity> existingRelations =
+                userRoleRepository.findByUserId(user.getId());
 
-        List<UserRoleEntity> userRoles = roles.stream()
+        Set<Long> requestedRoleIds = requestedRoles.stream()
+                .map(RoleEntity::getId)
+                .collect(Collectors.toSet());
+
+        Set<Long> existingRoleIds = existingRelations.stream()
+                .map(relation -> relation.getRole().getId())
+                .collect(Collectors.toSet());
+
+        List<UserRoleEntity> relationsToDelete = existingRelations.stream()
+                .filter(relation ->
+                        !requestedRoleIds.contains(relation.getRole().getId()))
+                .toList();
+
+        List<UserRoleEntity> relationsToAdd = requestedRoles.stream()
+                .filter(role -> !existingRoleIds.contains(role.getId()))
                 .map(role -> UserRoleEntity.builder()
                         .user(user)
                         .role(role)
                         .build())
                 .toList();
-        userRoleRepository.saveAll(userRoles);
+
+        if (!relationsToDelete.isEmpty()) {
+            userRoleRepository.deleteAll(relationsToDelete);
+        }
+
+        if (!relationsToAdd.isEmpty()) {
+            userRoleRepository.saveAll(relationsToAdd);
+        }
     }
 
     private UserManagementResponse toResponse(UserAccountEntity user) {
