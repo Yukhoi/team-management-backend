@@ -2,6 +2,7 @@ package com.yukai.team.matchservice.exception;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.OptimisticLockException;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,9 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.yukai.team.matchservice.opponentanalysis.exception.FlaAccessDeniedException;
+import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
+import com.yukai.team.matchservice.opponentanalysis.exception.FlaMappingConflictException;
 
 import java.time.OffsetDateTime;
 
@@ -32,6 +36,16 @@ public class GlobalExceptionHandler {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(fieldError -> fieldError.getField() + " " + fieldError.getDefaultMessage())
+                .orElse("Request validation failed");
+        return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException ex) {
+        log.warn("Match request constraint validation failed", ex);
+        String message = ex.getConstraintViolations().stream()
+                .findFirst()
+                .map(violation -> violation.getPropertyPath() + " " + violation.getMessage())
                 .orElse("Request validation failed");
         return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message);
     }
@@ -76,6 +90,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException ex) {
         log.warn("Match business exception", ex);
         return buildResponse(HttpStatus.BAD_REQUEST, "BUSINESS_ERROR", ex.getMessage());
+    }
+
+    @ExceptionHandler(FlaAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleFlaAccessDeniedException(FlaAccessDeniedException ex) {
+        log.warn("FLA sync access denied", ex);
+        return buildResponse(HttpStatus.FORBIDDEN, "ACCESS_DENIED", ex.getMessage());
+    }
+
+    @ExceptionHandler(FlaClientException.class)
+    public ResponseEntity<ErrorResponse> handleFlaClientException(FlaClientException ex) {
+        log.warn("FLA external service error", ex);
+        return buildResponse(ex.getHttpStatus(), ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(FlaMappingConflictException.class)
+    public ResponseEntity<ErrorResponse> handleFlaMappingConflictException(FlaMappingConflictException ex) {
+        log.warn("FLA mapping conflict", ex);
+        return buildResponse(HttpStatus.CONFLICT, "FLA_MAPPING_CONFLICT", ex.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)

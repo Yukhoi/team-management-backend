@@ -44,7 +44,7 @@ spring:
             - id: match-service
               uri: ${MATCH_SERVICE_URL:http://match-service:8084}
               predicates:
-                - Path=/api/v1/matches/**,/api/v1/goals/**
+                - Path=/api/v1/matches/**,/api/v1/goals/**,/api/v1/fla,/api/v1/fla/**,/api/v1/fla-mappings,/api/v1/fla-mappings/**
 
             - id: tournament-service
               uri: ${TOURNAMENT_SERVICE_URL:http://tournament-service:8085}

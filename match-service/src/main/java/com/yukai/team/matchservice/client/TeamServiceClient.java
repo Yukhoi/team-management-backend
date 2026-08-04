@@ -3,6 +3,7 @@ package com.yukai.team.matchservice.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yukai.team.matchservice.client.dto.CreateOpponentTeamRequest;
 import com.yukai.team.matchservice.client.dto.CreateOpponentTeamResponse;
+import com.yukai.team.matchservice.client.dto.InternalTeamInfo;
 import com.yukai.team.matchservice.client.dto.ValidateMatchTeamsRequest;
 import com.yukai.team.matchservice.client.dto.ValidateMatchTeamsResponse;
 import com.yukai.team.matchservice.client.dto.ValidatePlayersRequest;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import jakarta.persistence.EntityNotFoundException;
 
 import java.util.Set;
 
@@ -56,6 +58,19 @@ public class TeamServiceClient {
                     .body(new CreateOpponentTeamRequest(name))
                     .retrieve()
                     .body(CreateOpponentTeamResponse.class);
+        } catch (HttpClientErrorException ex) {
+            throw new IllegalArgumentException(resolveTeamServiceErrorMessage(ex), ex);
+        }
+    }
+
+    public InternalTeamInfo getTeam(Long teamId) {
+        try {
+            return restClient.get()
+                    .uri("/internal/teams/{id}", teamId)
+                    .retrieve()
+                    .body(InternalTeamInfo.class);
+        } catch (HttpClientErrorException.NotFound ex) {
+            throw new EntityNotFoundException("Team not found");
         } catch (HttpClientErrorException ex) {
             throw new IllegalArgumentException(resolveTeamServiceErrorMessage(ex), ex);
         }

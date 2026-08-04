@@ -46,6 +46,10 @@ app:
       match-events: match-service.match-events
 
 opponent-analysis:
+  fla:
+    base-url: ${FLA_BASE_URL:https://www.football-loisir-amateur.com}
+    connect-timeout: 5s
+    read-timeout: 20s
   ai:
     provider: openrouter
     base-url: https://openrouter.ai/api/v1

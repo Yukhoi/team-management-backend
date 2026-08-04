@@ -21,6 +21,12 @@ services:
   tournament-service:
     base-url: ${TOURNAMENT_SERVICE_BASE_URL:http://tournament-service:8085}
 
+opponent-analysis:
+  fla:
+    base-url: ${FLA_BASE_URL:https://www.football-loisir-amateur.com}
+    connect-timeout: 5s
+    read-timeout: 20s
+
 springdoc:
   api-docs:
     enabled: true

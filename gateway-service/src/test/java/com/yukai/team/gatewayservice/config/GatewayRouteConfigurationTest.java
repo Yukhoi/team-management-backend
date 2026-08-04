@@ -21,6 +21,11 @@ class GatewayRouteConfigurationTest {
     void should_route_match_frontend_queries_to_match_service() {
         assertRoute("/api/v1/matches", "match-route", "http://localhost:8084");
         assertRoute("/api/v1/matches/1/goals", "match-route", "http://localhost:8084");
+        assertRoute("/api/v1/fla/championnats", "match-route", "http://localhost:8084");
+        assertRoute("/api/v1/fla/championnats/1365/seasons/15/teams", "match-route", "http://localhost:8084");
+        assertRoute("/api/v1/fla/championnats/1365/seasons/15/sync", "match-route", "http://localhost:8084");
+        assertRoute("/api/v1/fla-mappings/tournaments/5", "match-route", "http://localhost:8084");
+        assertRoute("/api/v1/fla-mappings/tournaments/5/teams/12", "match-route", "http://localhost:8084");
     }
 
     @Test

@@ -5,6 +5,8 @@ import com.yukai.team.teamservice.exception.BusinessException;
 import com.yukai.team.teamservice.repository.TeamRepository;
 import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Hidden;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,6 +48,13 @@ public class InternalTeamController {
                 toInternalTeamInfo(ourTeam),
                 opponentTeam == null ? null : toInternalTeamInfo(opponentTeam)
         );
+    }
+
+    @GetMapping("/{id}")
+    public InternalTeamInfo getTeam(@PathVariable Long id) {
+        Team team = teamRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("teamId not found"));
+        return toInternalTeamInfo(team);
     }
 
     @PostMapping("/opponents")

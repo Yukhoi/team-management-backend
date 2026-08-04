@@ -3,3 +3,9 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+opponent-analysis:
+  fla:
+    base-url: ${FLA_BASE_URL:https://www.football-loisir-amateur.com}
+    connect-timeout: 5s
+    read-timeout: 20s
