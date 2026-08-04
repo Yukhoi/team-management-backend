@@ -163,6 +163,8 @@ services:
       TEAM_SERVICE_BASE_URL: http://team-service:8082
       TOURNAMENT_SERVICE_BASE_URL: http://tournament-service:8085
       JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL}
     ports:
       - "${MATCH_SERVICE_HOST_PORT:-8084}:8084"
     depends_on:

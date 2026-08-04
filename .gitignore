@@ -38,6 +38,9 @@ build/
 ### Mac OS ###
 .DS_Store
 
-.env.prod
+.env
+.env.*
+!.env.example
+!.env.prod.example
 
 login.json

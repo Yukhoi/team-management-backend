@@ -44,3 +44,15 @@ app:
   kafka:
     topics:
       match-events: match-service.match-events
+
+opponent-analysis:
+  ai:
+    provider: openrouter
+    base-url: https://openrouter.ai/api/v1
+    api-key: ${OPENROUTER_API_KEY:}
+    model: ${OPENROUTER_MODEL:}
+    connect-timeout: 5s
+    read-timeout: 45s
+    max-output-tokens: 1800
+    temperature: 0.2
+    prompt-version: v1
