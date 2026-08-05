@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaAccessDeniedException;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaMappingConflictException;
+import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAnalysisConflictException;
 
 import java.time.OffsetDateTime;
 
@@ -108,6 +109,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleFlaMappingConflictException(FlaMappingConflictException ex) {
         log.warn("FLA mapping conflict", ex);
         return buildResponse(HttpStatus.CONFLICT, "FLA_MAPPING_CONFLICT", ex.getMessage());
+    }
+
+    @ExceptionHandler(OpponentAnalysisConflictException.class)
+    public ResponseEntity<ErrorResponse> handleOpponentAnalysisConflictException(OpponentAnalysisConflictException ex) {
+        log.warn("Opponent analysis conflict", ex);
+        return buildResponse(HttpStatus.CONFLICT, "OPPONENT_ANALYSIS_CONFLICT", ex.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)
