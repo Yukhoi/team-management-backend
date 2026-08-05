@@ -10,6 +10,13 @@ public interface ExternalDataSnapshotRepository extends JpaRepository<ExternalDa
 
     Optional<ExternalDataSnapshot> findByPayloadHash(String payloadHash);
 
+    Optional<ExternalDataSnapshot> findByProviderAndChampionnatIdAndSaisonIdAndPayloadHash(
+            String provider,
+            Long championnatId,
+            Long saisonId,
+            String payloadHash
+    );
+
     Optional<ExternalDataSnapshot> findTopByProviderAndChampionnatIdAndSaisonIdOrderByFetchedAtDescIdDesc(
             String provider,
             Long championnatId,

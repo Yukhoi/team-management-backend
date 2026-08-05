@@ -11,6 +11,7 @@ import com.yukai.team.matchservice.opponentanalysis.dto.TeamComparisonMetrics;
 import com.yukai.team.matchservice.opponentanalysis.dto.TeamPerformanceMetrics;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
 import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAnalysisConflictException;
+import com.yukai.team.matchservice.opponentanalysis.service.CacheStatus;
 import com.yukai.team.matchservice.opponentanalysis.service.MatchOpponentMetricsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -32,6 +33,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -61,7 +63,7 @@ class OpponentAnalysisMetricsControllerTest {
     @Test
     void returnsMetrics() throws Exception {
         UserContextHolder.set(new CurrentUser(1L, "player", List.of("PLAYER")));
-        when(matchOpponentMetricsService.getMetrics(42L)).thenReturn(response());
+        when(matchOpponentMetricsService.getMetrics(42L, false)).thenReturn(response(false));
 
         mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics"))
                 .andExpect(status().isOk())
@@ -71,7 +73,35 @@ class OpponentAnalysisMetricsControllerTest {
                 .andExpect(jsonPath("$.league.teamCount").value(2))
                 .andExpect(jsonPath("$.comparison.pointsDifference").value(10))
                 .andExpect(jsonPath("$.dataSource.provider").value("FLA"))
+                .andExpect(jsonPath("$.dataSource.snapshotId").value(10))
+                .andExpect(jsonPath("$.dataSource.payloadHash").value("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
+                .andExpect(jsonPath("$.dataSource.cacheStatus").value("HIT"))
+                .andExpect(jsonPath("$.dataSource.cacheTtlSeconds").value(21600))
+                .andExpect(jsonPath("$.dataSource.forceRefreshRequested").value(false))
                 .andExpect(jsonPath("$.dataSource.rankingType").value("CALCULATED"));
+        verify(matchOpponentMetricsService).getMetrics(42L, false);
+    }
+
+    @Test
+    void passesForceRefreshTrue() throws Exception {
+        UserContextHolder.set(new CurrentUser(1L, "player", List.of("PLAYER")));
+        when(matchOpponentMetricsService.getMetrics(42L, true)).thenReturn(response(true));
+
+        mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics?forceRefresh=true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataSource.forceRefreshRequested").value(true));
+        verify(matchOpponentMetricsService).getMetrics(42L, true);
+    }
+
+    @Test
+    void passesForceRefreshFalse() throws Exception {
+        UserContextHolder.set(new CurrentUser(1L, "player", List.of("PLAYER")));
+        when(matchOpponentMetricsService.getMetrics(42L, false)).thenReturn(response(false));
+
+        mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics?forceRefresh=false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataSource.forceRefreshRequested").value(false));
+        verify(matchOpponentMetricsService).getMetrics(42L, false);
     }
 
     @Test
@@ -79,7 +109,7 @@ class OpponentAnalysisMetricsControllerTest {
         UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
         doThrow(new EntityNotFoundException("Match not found"))
                 .when(matchOpponentMetricsService)
-                .getMetrics(42L);
+                .getMetrics(42L, false);
 
         mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics"))
                 .andExpect(status().isNotFound())
@@ -91,7 +121,7 @@ class OpponentAnalysisMetricsControllerTest {
         UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
         doThrow(new OpponentAnalysisConflictException("Our team FLA mapping is missing"))
                 .when(matchOpponentMetricsService)
-                .getMetrics(42L);
+                .getMetrics(42L, false);
 
         mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics"))
                 .andExpect(status().isConflict())
@@ -103,7 +133,7 @@ class OpponentAnalysisMetricsControllerTest {
         UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
         doThrow(new FlaClientException(HttpStatus.BAD_GATEWAY, "FLA_SERVICE_UNAVAILABLE", "FLA service unavailable"))
                 .when(matchOpponentMetricsService)
-                .getMetrics(42L);
+                .getMetrics(42L, false);
 
         mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics"))
                 .andExpect(status().isBadGateway())
@@ -115,7 +145,7 @@ class OpponentAnalysisMetricsControllerTest {
         UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
         doThrow(new FlaClientException(HttpStatus.GATEWAY_TIMEOUT, "FLA_TIMEOUT", "FLA request timed out"))
                 .when(matchOpponentMetricsService)
-                .getMetrics(42L);
+                .getMetrics(42L, false);
 
         mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics"))
                 .andExpect(status().isGatewayTimeout())
@@ -127,6 +157,15 @@ class OpponentAnalysisMetricsControllerTest {
         UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
 
         mockMvc.perform(get("/api/v1/matches/0/opponent-analysis/metrics"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void rejectsInvalidForceRefreshParameter() throws Exception {
+        UserContextHolder.set(new CurrentUser(1L, "coach", List.of("COACH")));
+
+        mockMvc.perform(get("/api/v1/matches/42/opponent-analysis/metrics?forceRefresh=not-boolean"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
@@ -150,7 +189,7 @@ class OpponentAnalysisMetricsControllerTest {
     @Test
     void exposesOpenApiContract() throws Exception {
         Tag tag = OpponentAnalysisMetricsController.class.getAnnotation(Tag.class);
-        Method method = OpponentAnalysisMetricsController.class.getMethod("getMetrics", Long.class);
+        Method method = OpponentAnalysisMetricsController.class.getMethod("getMetrics", Long.class, Boolean.class);
         Operation operation = method.getAnnotation(Operation.class);
         Set<String> responseCodes = Arrays.stream(OpponentAnalysisMetricsController.class.getAnnotation(ApiResponses.class).value())
                 .map(io.swagger.v3.oas.annotations.responses.ApiResponse::responseCode)
@@ -162,7 +201,7 @@ class OpponentAnalysisMetricsControllerTest {
         assertThat(responseCodes).contains("200", "400", "401", "403", "404", "409", "502", "504", "500");
     }
 
-    private MatchOpponentMetricsResponse response() {
+    private MatchOpponentMetricsResponse response(boolean forceRefreshRequested) {
         OffsetDateTime now = OffsetDateTime.parse("2026-08-05T12:00:00Z");
         return new MatchOpponentMetricsResponse(
                 new MatchOpponentMetricsResponse.MatchContext(
@@ -211,7 +250,12 @@ class OpponentAnalysisMetricsControllerTest {
                         "FLA",
                         1365L,
                         15L,
+                        10L,
+                        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         now,
+                        CacheStatus.HIT,
+                        21600L,
+                        forceRefreshRequested,
                         "LATEST_TO_OLDEST",
                         "CALCULATED"
                 )

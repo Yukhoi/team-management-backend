@@ -5,4 +5,6 @@ import com.yukai.team.matchservice.opponentanalysis.dto.MatchOpponentMetricsResp
 public interface MatchOpponentMetricsService {
 
     MatchOpponentMetricsResponse getMetrics(Long matchId);
+
+    MatchOpponentMetricsResponse getMetrics(Long matchId, boolean forceRefresh);
 }

@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,7 +17,14 @@ import java.time.OffsetDateTime;
 @Getter
 @Setter
 @Entity
-@Table(name = "external_data_snapshot", schema = "match")
+@Table(
+        name = "external_data_snapshot",
+        schema = "match",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_external_data_snapshot_provider_context_hash",
+                columnNames = {"provider", "championnat_id", "saison_id", "payload_hash"}
+        )
+)
 public class ExternalDataSnapshot {
 
     @Id

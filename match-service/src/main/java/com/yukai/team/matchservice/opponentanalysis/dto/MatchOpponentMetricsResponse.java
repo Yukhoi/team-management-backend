@@ -2,6 +2,7 @@ package com.yukai.team.matchservice.opponentanalysis.dto;
 
 import com.yukai.team.matchservice.entity.HomeAway;
 import com.yukai.team.matchservice.entity.MatchStatus;
+import com.yukai.team.matchservice.opponentanalysis.service.CacheStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.OffsetDateTime;
@@ -37,7 +38,12 @@ public record MatchOpponentMetricsResponse(
             String provider,
             Long championnatId,
             Long saisonId,
+            Long snapshotId,
+            String payloadHash,
             OffsetDateTime fetchedAt,
+            CacheStatus cacheStatus,
+            Long cacheTtlSeconds,
+            Boolean forceRefreshRequested,
             String formOrder,
             String rankingType
     ) {

@@ -1,7 +1,7 @@
 package com.yukai.team.matchservice.opponentanalysis.service;
 
 import com.yukai.team.matchservice.entity.MatchInfo;
-import com.yukai.team.matchservice.opponentanalysis.client.FlaClient;
+import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.MatchOpponentMetricsResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.TeamPerformanceMetrics;
@@ -12,7 +12,6 @@ import com.yukai.team.matchservice.repository.MatchInfoRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,23 +25,31 @@ public class MatchOpponentMetricsServiceImpl implements MatchOpponentMetricsServ
 
     private final MatchInfoRepository matchInfoRepository;
     private final FlaTeamMappingRepository flaTeamMappingRepository;
-    private final FlaClient flaClient;
+    private final FlaStandingsSnapshotService flaStandingsSnapshotService;
     private final OpponentMetricsCalculator opponentMetricsCalculator;
+    private final FlaProperties flaProperties;
 
     public MatchOpponentMetricsServiceImpl(
             MatchInfoRepository matchInfoRepository,
             FlaTeamMappingRepository flaTeamMappingRepository,
-            FlaClient flaClient,
-            OpponentMetricsCalculator opponentMetricsCalculator
+            FlaStandingsSnapshotService flaStandingsSnapshotService,
+            OpponentMetricsCalculator opponentMetricsCalculator,
+            FlaProperties flaProperties
     ) {
         this.matchInfoRepository = matchInfoRepository;
         this.flaTeamMappingRepository = flaTeamMappingRepository;
-        this.flaClient = flaClient;
+        this.flaStandingsSnapshotService = flaStandingsSnapshotService;
         this.opponentMetricsCalculator = opponentMetricsCalculator;
+        this.flaProperties = flaProperties;
     }
 
     @Override
     public MatchOpponentMetricsResponse getMetrics(Long matchId) {
+        return getMetrics(matchId, false);
+    }
+
+    @Override
+    public MatchOpponentMetricsResponse getMetrics(Long matchId, boolean forceRefresh) {
         validatePositive(matchId, "matchId");
         MatchInfo match = matchInfoRepository.findById(matchId)
                 .orElseThrow(() -> new EntityNotFoundException("Match not found"));
@@ -59,10 +66,12 @@ public class MatchOpponentMetricsServiceImpl implements MatchOpponentMetricsServ
         );
         validateSameExternalContext(ourMapping, opponentMapping);
 
-        List<FlaStandingEntryResponse> standings = flaClient.getStandings(
+        StandingsSnapshotResult snapshotResult = flaStandingsSnapshotService.getStandings(
                 ourMapping.getFlaChampionnatId(),
-                ourMapping.getFlaSaisonId()
+                ourMapping.getFlaSaisonId(),
+                forceRefresh
         );
+        List<FlaStandingEntryResponse> standings = snapshotResult.standings();
         FlaStandingEntryResponse ourEntry = findStandingEntry(
                 standings,
                 ourMapping.getFlaTeamId(),
@@ -97,7 +106,12 @@ public class MatchOpponentMetricsServiceImpl implements MatchOpponentMetricsServ
                         PROVIDER_FLA,
                         ourMapping.getFlaChampionnatId(),
                         ourMapping.getFlaSaisonId(),
-                        OffsetDateTime.now(),
+                        snapshotResult.snapshotId(),
+                        snapshotResult.payloadHash(),
+                        snapshotResult.fetchedAt(),
+                        snapshotResult.cacheStatus(),
+                        flaProperties.getSnapshotTtl().toSeconds(),
+                        forceRefresh,
                         FORM_ORDER_LATEST_TO_OLDEST,
                         RANKING_TYPE_CALCULATED
                 )

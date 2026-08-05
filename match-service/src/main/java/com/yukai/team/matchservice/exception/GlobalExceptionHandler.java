@@ -17,6 +17,9 @@ import com.yukai.team.matchservice.opponentanalysis.exception.FlaAccessDeniedExc
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaMappingConflictException;
 import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAnalysisConflictException;
+import com.yukai.team.matchservice.opponentanalysis.exception.SnapshotProcessingException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
 
@@ -75,6 +78,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFoundException(NoResourceFoundException ex) {
+        log.warn("No match-service route or static resource found", ex);
+        return buildResponse(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ex.getMessage());
+    }
+
     @ExceptionHandler({OptimisticLockException.class, ObjectOptimisticLockingFailureException.class})
     public ResponseEntity<ErrorResponse> handleOptimisticLockException(Exception ex) {
         log.warn("Match optimistic locking conflict", ex);
@@ -85,6 +94,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
         log.warn("Invalid match request", ex);
         return buildResponse(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", ex.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
+        log.warn("Match request parameter type mismatch", ex);
+        return buildResponse(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", ex.getName() + " has invalid value");
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -115,6 +130,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleOpponentAnalysisConflictException(OpponentAnalysisConflictException ex) {
         log.warn("Opponent analysis conflict", ex);
         return buildResponse(HttpStatus.CONFLICT, "OPPONENT_ANALYSIS_CONFLICT", ex.getMessage());
+    }
+
+    @ExceptionHandler(SnapshotProcessingException.class)
+    public ResponseEntity<ErrorResponse> handleSnapshotProcessingException(SnapshotProcessingException ex) {
+        log.error("FLA snapshot processing failed", ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "SNAPSHOT_PROCESSING_ERROR", ex.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)

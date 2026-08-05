@@ -23,4 +23,7 @@ public class FlaProperties {
 
     @NotNull
     private Duration readTimeout = Duration.ofSeconds(20);
+
+    @NotNull
+    private Duration snapshotTtl = Duration.ofHours(6);
 }

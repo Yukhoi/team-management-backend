@@ -50,6 +50,7 @@ opponent-analysis:
     base-url: ${FLA_BASE_URL:https://www.football-loisir-amateur.com}
     connect-timeout: 5s
     read-timeout: 20s
+    snapshot-ttl: ${FLA_SNAPSHOT_TTL:6h}
   ai:
     provider: openrouter
     base-url: https://openrouter.ai/api/v1

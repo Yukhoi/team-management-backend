@@ -3,7 +3,7 @@ package com.yukai.team.matchservice.opponentanalysis.service;
 import com.yukai.team.matchservice.entity.HomeAway;
 import com.yukai.team.matchservice.entity.MatchInfo;
 import com.yukai.team.matchservice.entity.MatchStatus;
-import com.yukai.team.matchservice.opponentanalysis.client.FlaClient;
+import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse;
 import com.yukai.team.matchservice.opponentanalysis.entity.FlaTeamMapping;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
@@ -17,12 +17,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,7 +35,7 @@ class MatchOpponentMetricsServiceImplTest {
     @Mock
     private FlaTeamMappingRepository flaTeamMappingRepository;
     @Mock
-    private FlaClient flaClient;
+    private FlaStandingsSnapshotService flaStandingsSnapshotService;
 
     @Test
     void returnsMetrics() {
@@ -43,13 +45,13 @@ class MatchOpponentMetricsServiceImplTest {
                 .thenReturn(Optional.of(mapping(12L, 6580L, 1365L, 15L)));
         when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 13L))
                 .thenReturn(Optional.of(mapping(13L, 6581L, 1365L, 15L)));
-        when(flaClient.getStandings(1365L, 15L))
-                .thenReturn(List.of(
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false))
+                .thenReturn(snapshotResult(
                         entry(6580L, "Our FLA", 20, 6, 2, 2, 30, 10),
                         entry(6581L, "Opponent FLA", 10, 3, 1, 6, 10, 20)
                 ));
 
-        var response = service().getMetrics(42L);
+        var response = service().getMetrics(42L, false);
 
         assertThat(response.match().matchId()).isEqualTo(42L);
         assertThat(response.match().ourTeamName()).isEqualTo("Our Team");
@@ -62,8 +64,28 @@ class MatchOpponentMetricsServiceImplTest {
         assertThat(response.dataSource().provider()).isEqualTo("FLA");
         assertThat(response.dataSource().championnatId()).isEqualTo(1365L);
         assertThat(response.dataSource().saisonId()).isEqualTo(15L);
+        assertThat(response.dataSource().snapshotId()).isEqualTo(10L);
+        assertThat(response.dataSource().payloadHash()).isEqualTo(payloadHash());
+        assertThat(response.dataSource().cacheStatus()).isEqualTo(CacheStatus.HIT);
+        assertThat(response.dataSource().cacheTtlSeconds()).isEqualTo(21600L);
+        assertThat(response.dataSource().forceRefreshRequested()).isFalse();
         assertThat(response.dataSource().formOrder()).isEqualTo("LATEST_TO_OLDEST");
         assertThat(response.dataSource().rankingType()).isEqualTo("CALCULATED");
+    }
+
+    @Test
+    void passesForceRefreshToSnapshotService() {
+        commonMappings();
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, true))
+                .thenReturn(snapshotResult(
+                        entry(6580L, "Our FLA", 20, 6, 2, 2, 30, 10),
+                        entry(6581L, "Opponent FLA", 10, 3, 1, 6, 10, 20)
+                ));
+
+        var response = service().getMetrics(42L, true);
+
+        assertThat(response.dataSource().forceRefreshRequested()).isTrue();
+        verify(flaStandingsSnapshotService).getStandings(1365L, 15L, true);
     }
 
     @Test
@@ -128,8 +150,8 @@ class MatchOpponentMetricsServiceImplTest {
     @Test
     void failsWhenFlaStandingsMissOurTeam() {
         commonMappings();
-        when(flaClient.getStandings(1365L, 15L))
-                .thenReturn(List.of(entry(6581L, "Opponent FLA", 10, 3, 1, 6, 10, 20)));
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false))
+                .thenReturn(snapshotResult(entry(6581L, "Opponent FLA", 10, 3, 1, 6, 10, 20)));
 
         assertThatThrownBy(() -> service().getMetrics(42L))
                 .isInstanceOf(OpponentAnalysisConflictException.class)
@@ -139,8 +161,8 @@ class MatchOpponentMetricsServiceImplTest {
     @Test
     void failsWhenFlaStandingsMissOpponentTeam() {
         commonMappings();
-        when(flaClient.getStandings(1365L, 15L))
-                .thenReturn(List.of(entry(6580L, "Our FLA", 20, 6, 2, 2, 30, 10)));
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false))
+                .thenReturn(snapshotResult(entry(6580L, "Our FLA", 20, 6, 2, 2, 30, 10)));
 
         assertThatThrownBy(() -> service().getMetrics(42L))
                 .isInstanceOf(OpponentAnalysisConflictException.class)
@@ -150,7 +172,7 @@ class MatchOpponentMetricsServiceImplTest {
     @Test
     void failsWhenFlaStandingsAreEmpty() {
         commonMappings();
-        when(flaClient.getStandings(1365L, 15L)).thenReturn(List.of());
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false)).thenReturn(snapshotResult());
 
         assertThatThrownBy(() -> service().getMetrics(42L))
                 .isInstanceOf(OpponentAnalysisConflictException.class)
@@ -160,7 +182,7 @@ class MatchOpponentMetricsServiceImplTest {
     @Test
     void propagatesFlaClientException() {
         commonMappings();
-        when(flaClient.getStandings(1365L, 15L))
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false))
                 .thenThrow(new FlaClientException(HttpStatus.BAD_GATEWAY, "FLA_SERVICE_UNAVAILABLE", "FLA service unavailable"));
 
         assertThatThrownBy(() -> service().getMetrics(42L))
@@ -180,9 +202,30 @@ class MatchOpponentMetricsServiceImplTest {
         return new MatchOpponentMetricsServiceImpl(
                 matchInfoRepository,
                 flaTeamMappingRepository,
-                flaClient,
-                new OpponentMetricsCalculator()
+                flaStandingsSnapshotService,
+                new OpponentMetricsCalculator(),
+                flaProperties()
         );
+    }
+
+    private StandingsSnapshotResult snapshotResult(FlaStandingEntryResponse... standings) {
+        return new StandingsSnapshotResult(
+                10L,
+                List.of(standings),
+                payloadHash(),
+                OffsetDateTime.parse("2026-08-05T12:00:00Z"),
+                CacheStatus.HIT
+        );
+    }
+
+    private String payloadHash() {
+        return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    }
+
+    private FlaProperties flaProperties() {
+        FlaProperties properties = new FlaProperties();
+        properties.setSnapshotTtl(Duration.ofHours(6));
+        return properties;
     }
 
     private MatchInfo match() {
