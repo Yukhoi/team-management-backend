@@ -10,3 +10,14 @@ opponent-analysis:
     connect-timeout: 5s
     read-timeout: 20s
     snapshot-ttl: ${FLA_SNAPSHOT_TTL:6h}
+  ai:
+    provider: openrouter
+    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${OPENROUTER_API_KEY:}
+    model: ${OPENROUTER_MODEL:}
+    connect-timeout: 5s
+    read-timeout: 45s
+    max-output-tokens: ${OPENROUTER_MAX_OUTPUT_TOKENS:4000}
+    temperature: 0.2
+    prompt-version: v1
+    reasoning-enabled: ${OPENROUTER_REASONING_ENABLED:false}

@@ -60,6 +60,18 @@ public class OpponentAnalysisReport {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    @Column(name = "error_code", length = 100)
+    private String errorCode;
+
+    @Column(name = "prompt_tokens")
+    private Integer promptTokens;
+
+    @Column(name = "completion_tokens")
+    private Integer completionTokens;
+
+    @Column(name = "total_tokens")
+    private Integer totalTokens;
+
     @Column(name = "source_fetched_at")
     private OffsetDateTime sourceFetchedAt;
 

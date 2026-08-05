@@ -79,7 +79,7 @@ spring:
             - id: match-route
               uri: http://localhost:8084
               predicates:
-                - Path=/api/v1/matches,/api/v1/matches/**,/api/v1/goals,/api/v1/goals/**,/api/v1/fla,/api/v1/fla/**,/api/v1/fla-mappings,/api/v1/fla-mappings/**
+                - Path=/api/v1/matches,/api/v1/matches/**,/api/v1/goals,/api/v1/goals/**,/api/v1/fla,/api/v1/fla/**,/api/v1/fla-mappings,/api/v1/fla-mappings/**,/api/v1/opponent-analysis/**
 
             - id: match-openapi-route
               uri: http://localhost:8084

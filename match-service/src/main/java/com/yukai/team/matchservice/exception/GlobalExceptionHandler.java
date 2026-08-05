@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaAccessDeniedException;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaMappingConflictException;
+import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAiException;
 import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAnalysisConflictException;
 import com.yukai.team.matchservice.opponentanalysis.exception.SnapshotProcessingException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -129,7 +130,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OpponentAnalysisConflictException.class)
     public ResponseEntity<ErrorResponse> handleOpponentAnalysisConflictException(OpponentAnalysisConflictException ex) {
         log.warn("Opponent analysis conflict", ex);
-        return buildResponse(HttpStatus.CONFLICT, "OPPONENT_ANALYSIS_CONFLICT", ex.getMessage());
+        return buildResponse(HttpStatus.CONFLICT, ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(OpponentAiException.class)
+    public ResponseEntity<ErrorResponse> handleOpponentAiException(OpponentAiException ex) {
+        log.warn("Opponent AI generation failed", ex);
+        return buildResponse(ex.getHttpStatus(), ex.getCode(), ex.getMessage());
     }
 
     @ExceptionHandler(SnapshotProcessingException.class)
