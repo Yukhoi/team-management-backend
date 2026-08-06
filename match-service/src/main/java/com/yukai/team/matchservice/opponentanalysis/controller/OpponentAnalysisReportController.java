@@ -8,6 +8,7 @@ import com.yukai.team.matchservice.opponentanalysis.exception.FlaAccessDeniedExc
 import com.yukai.team.matchservice.opponentanalysis.service.OpponentAnalysisApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -28,25 +29,69 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1")
-@Tag(name = "Opponent Analysis Reports", description = "AI opponent analysis report generation and query APIs")
+@Tag(name = "Opponent Analysis", description = "AI opponent analysis generation, metrics and report query APIs")
 @SecurityRequirement(name = "bearerAuth")
 @Validated
-@ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Match or report not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Match is not eligible or analysis context is invalid", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "OpenRouter rate limited", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "502", description = "FLA or OpenRouter upstream error", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "OpenRouter not configured", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "504", description = "FLA or OpenRouter timeout", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-})
 public class OpponentAnalysisReportController {
 
     private static final Set<String> GENERATE_ROLES = Set.of("ADMIN", "COACH");
     private static final Set<String> READ_ROLES = Set.of("ADMIN", "COACH", "PLAYER");
+    private static final String REPORT_EXAMPLE = """
+            {
+              "id": 10,
+              "matchId": 42,
+              "opponentTeamId": 13,
+              "opponentTeamName": "ASTERIA",
+              "status": "COMPLETED",
+              "provider": "openrouter",
+              "model": "inclusionai/ling-3.0-flash",
+              "promptVersion": "v1",
+              "language": "zh-CN",
+              "reused": false,
+              "snapshotId": 23,
+              "sourceFetchedAt": "2026-08-05T12:00:00Z",
+              "generatedAt": "2026-08-06T10:15:30Z",
+              "createdAt": "2026-08-06T10:15:20Z",
+              "metrics": null,
+              "usage": {
+                "promptTokens": 1200,
+                "completionTokens": 700,
+                "totalTokens": 1900
+              },
+              "report": {
+                "threatLevel": "HIGH",
+                "summary": "对手整体实力明显强于我方，需要优先加强防守并减少中场失误。",
+                "comparison": [
+                  {
+                    "metric": "联赛排名",
+                    "ourValue": "12",
+                    "opponentValue": "3",
+                    "analysis": "对手排名明显更高。"
+                  }
+                ],
+                "strengths": [
+                  {
+                    "title": "进攻火力强",
+                    "analysis": "场均进球远高于联赛平均。",
+                    "evidence": [
+                      "场均进球4.31"
+                    ]
+                  }
+                ],
+                "weaknesses": [],
+                "recommendations": [
+                  "加强防守。",
+                  "减少中场失误。"
+                ],
+                "dataLimitations": [
+                  "无球员伤病数据。",
+                  "无历史交锋数据。"
+                ]
+              },
+              "errorCode": null
+            }
+            """;
+    private static final String REPORT_HISTORY_EXAMPLE = "[" + REPORT_EXAMPLE + "]";
 
     private final OpponentAnalysisApplicationService service;
 
@@ -57,16 +102,21 @@ public class OpponentAnalysisReportController {
     @PostMapping("/matches/{matchId}/opponent-analysis")
     @Operation(
             summary = "Generate opponent analysis report",
-            description = "Generates and persists a Chinese structured opponent analysis report for a scheduled match. forceRefresh=false may reuse the current FLA snapshot and an existing COMPLETED report with the same matchId, snapshotId, provider, model, promptVersion and language. forceRefresh=true refreshes FLA data and generates a new report. ADMIN and COACH only. The report is based on public FLA standings and is for reference only; AI has no player, formation, injury, suspension, shooting, possession or reliable head-to-head data."
+            description = "根据比赛生成 AI 对手分析。使用 FLA 公共积分榜作为数据来源，使用 OpenRouter 生成中文结构化报告。默认 forceRefresh=false，允许复用相同 matchId、snapshotId、provider、model、promptVersion 和 language 下已有的 COMPLETED 报告；forceRefresh=true 会刷新 FLA 数据并强制重新生成。Requires ADMIN or COACH."
     )
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "200",
-            description = "Generated or reused opponent analysis report",
-            content = @Content(
-                    schema = @Schema(implementation = OpponentAnalysisReportResponse.class),
-                    examples = @ExampleObject(value = "{\"id\":15,\"matchId\":42,\"opponentTeamId\":13,\"opponentTeamName\":\"ASTERIA\",\"status\":\"COMPLETED\",\"provider\":\"openrouter\",\"model\":\"inclusionai/ling-3.0-flash\",\"promptVersion\":\"v1\",\"language\":\"zh-CN\",\"reused\":false,\"snapshotId\":10,\"report\":{\"threatLevel\":\"HIGH\",\"summary\":\"对手积分和进攻效率明显高于我方。\",\"comparison\":[],\"strengths\":[{\"title\":\"对手进攻效率高\",\"analysis\":\"对手场均进球更高。\",\"evidence\":[\"opponent.goalsForPerGame=4.31\"]}],\"weaknesses\":[],\"recommendations\":[\"我方应优先压缩防线前空间。\"],\"dataLimitations\":[\"无球员级别数据\"]},\"usage\":{\"promptTokens\":100,\"completionTokens\":200,\"totalTokens\":300}}")
-            )
-    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Generated or reused opponent analysis report", content = @Content(schema = @Schema(implementation = OpponentAnalysisReportResponse.class), examples = @ExampleObject(name = "completed", value = REPORT_EXAMPLE))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied; ADMIN or COACH role is required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Match not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Match is not eligible or analysis context is invalid", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "OpenRouter rate limited", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "502", description = "FLA or OpenRouter upstream error", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "OpenRouter not configured", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "504", description = "FLA or OpenRouter timeout", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public OpponentAnalysisReportResponse generate(
             @Parameter(description = "Match ID", example = "42") @PathVariable("matchId") @Positive Long matchId,
             @Parameter(description = "Force refresh FLA data and force AI regeneration", example = "false")
@@ -78,24 +128,48 @@ public class OpponentAnalysisReportController {
     }
 
     @GetMapping("/matches/{matchId}/opponent-analysis/latest")
-    @Operation(summary = "Get latest completed opponent analysis report", description = "Returns the latest COMPLETED opponent analysis report for a match. ADMIN, COACH and PLAYER can view.")
-    public OpponentAnalysisReportResponse latest(@PathVariable("matchId") @Positive Long matchId) {
+    @Operation(summary = "Get latest opponent analysis report", description = "获取指定比赛的最新 AI 对手分析报告。Accessible by ADMIN, COACH and PLAYER.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Latest opponent analysis report", content = @Content(schema = @Schema(implementation = OpponentAnalysisReportResponse.class), examples = @ExampleObject(name = "completed", value = REPORT_EXAMPLE))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied; ADMIN, COACH or PLAYER role is required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Match or completed report not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public OpponentAnalysisReportResponse latest(
+            @Parameter(description = "Match ID", example = "42") @PathVariable("matchId") @Positive Long matchId
+    ) {
         validatePositive(matchId, "matchId");
         requireRole(READ_ROLES, "ADMIN, COACH or PLAYER role is required to view opponent analysis reports");
         return service.latest(matchId);
     }
 
     @GetMapping("/matches/{matchId}/opponent-analysis")
-    @Operation(summary = "List opponent analysis report history", description = "Returns all opponent analysis report attempts for a match, ordered by createdAt DESC. ADMIN, COACH and PLAYER can view.")
-    public List<OpponentAnalysisReportResponse> history(@PathVariable("matchId") @Positive Long matchId) {
+    @Operation(summary = "List opponent analysis report history", description = "获取指定比赛的所有 AI 对手分析报告历史，按 createdAt DESC 排序。Accessible by ADMIN, COACH and PLAYER.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Opponent analysis report history", content = @Content(array = @ArraySchema(schema = @Schema(implementation = OpponentAnalysisReportResponse.class)), examples = @ExampleObject(name = "history", value = REPORT_HISTORY_EXAMPLE))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied; ADMIN, COACH or PLAYER role is required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Match not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public List<OpponentAnalysisReportResponse> history(
+            @Parameter(description = "Match ID", example = "42") @PathVariable("matchId") @Positive Long matchId
+    ) {
         validatePositive(matchId, "matchId");
         requireRole(READ_ROLES, "ADMIN, COACH or PLAYER role is required to view opponent analysis reports");
         return service.history(matchId);
     }
 
     @GetMapping("/opponent-analysis/{reportId}")
-    @Operation(summary = "Get opponent analysis report by ID", description = "Returns one opponent analysis report by ID. ADMIN, COACH and PLAYER can view.")
-    public OpponentAnalysisReportResponse get(@PathVariable("reportId") @Positive Long reportId) {
+    @Operation(summary = "Get opponent analysis report by ID", description = "根据 Report ID 获取 AI 对手分析报告详情。Accessible by ADMIN, COACH and PLAYER.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Opponent analysis report detail", content = @Content(schema = @Schema(implementation = OpponentAnalysisReportResponse.class), examples = @ExampleObject(name = "completed", value = REPORT_EXAMPLE))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Authentication required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Access denied; ADMIN, COACH or PLAYER role is required", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Report not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public OpponentAnalysisReportResponse get(
+            @Parameter(description = "Opponent analysis report ID", example = "10") @PathVariable("reportId") @Positive Long reportId
+    ) {
         validatePositive(reportId, "reportId");
         requireRole(READ_ROLES, "ADMIN, COACH or PLAYER role is required to view opponent analysis reports");
         return service.get(reportId);

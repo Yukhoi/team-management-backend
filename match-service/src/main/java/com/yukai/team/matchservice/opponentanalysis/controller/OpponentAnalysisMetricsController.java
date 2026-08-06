@@ -26,7 +26,7 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/matches/{matchId}/opponent-analysis")
-@Tag(name = "Opponent Analysis Metrics", description = "Deterministic opponent analysis metrics APIs")
+@Tag(name = "Opponent Analysis", description = "AI opponent analysis generation, metrics and report query APIs")
 @SecurityRequirement(name = "bearerAuth")
 @Validated
 @ApiResponses({

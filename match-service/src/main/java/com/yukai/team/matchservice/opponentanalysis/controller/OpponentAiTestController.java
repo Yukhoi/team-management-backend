@@ -28,7 +28,7 @@ import java.util.Set;
 @RestController
 @Profile({"dev", "docker"})
 @RequestMapping("/api/v1/opponent-analysis/ai")
-@Tag(name = "Opponent Analysis AI", description = "Independent OpenRouter opponent analysis test APIs")
+@Tag(name = "Opponent Analysis", description = "AI opponent analysis generation, metrics and report query APIs")
 @SecurityRequirement(name = "bearerAuth")
 @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
@@ -53,7 +53,7 @@ public class OpponentAiTestController {
     @PostMapping("/test")
     @Operation(
             summary = "Test OpenRouter opponent report generation",
-            description = "Development acceptance endpoint. It calls OpenRouter with fixed deterministic test data only; it does not use matchId, does not save OpponentAnalysisReport and does not generate report history."
+            description = "仅开发测试使用。This endpoint is enabled only under the dev and docker Spring profiles. It calls OpenRouter with fixed deterministic test data only; it does not use matchId, does not save OpponentAnalysisReport and does not generate report history. Requires ADMIN."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
             responseCode = "200",
