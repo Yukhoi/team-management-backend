@@ -29,13 +29,36 @@ public class FlaSyncServiceImpl implements FlaSyncService {
         return flaCacheWriter.upsertStandings(championnatId, saisonId, championnatName, standings);
     }
 
-    private void validateStandings(Long championnatId, List<FlaStandingEntryResponse> standings) {
+    private void validateStandings(
+            Long championnatId,
+            List<FlaStandingEntryResponse> standings
+    ) {
+        if (standings == null) {
+            throw new IllegalArgumentException("FLA standings must not be null");
+        }
+
         for (FlaStandingEntryResponse standing : standings) {
-            if (!championnatId.equals(standing.getChampionnatId())) {
-                throw new IllegalArgumentException("FLA standing championnatId does not match request");
+
+            if (standing == null) {
+                throw new IllegalArgumentException("FLA standing entry must not be null");
             }
+
+            if (!championnatId.equals(standing.getChampionnatId())) {
+                throw new IllegalArgumentException(
+                        "FLA standing championnatId does not match request"
+                );
+            }
+
             if (standing.getTeamId() == null) {
-                throw new IllegalArgumentException("FLA standing teamId is required");
+                throw new IllegalArgumentException(
+                        "FLA standing teamId is required"
+                );
+            }
+
+            if (standing.getTeamName() == null || standing.getTeamName().isBlank()) {
+                throw new IllegalArgumentException(
+                        "FLA standing teamName is required"
+                );
             }
         }
     }
