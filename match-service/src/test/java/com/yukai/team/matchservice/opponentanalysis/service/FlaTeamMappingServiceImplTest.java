@@ -4,6 +4,7 @@ import com.yukai.team.matchservice.client.TeamServiceClient;
 import com.yukai.team.matchservice.client.TournamentClient;
 import com.yukai.team.matchservice.client.dto.InternalTeamInfo;
 import com.yukai.team.matchservice.dto.response.TournamentSnapshotResponse;
+import com.yukai.team.matchservice.opponentanalysis.dto.FlaTeamMappingResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.UpsertFlaTeamMappingRequest;
 import com.yukai.team.matchservice.opponentanalysis.entity.FlaChampionnat;
 import com.yukai.team.matchservice.opponentanalysis.entity.FlaTeam;
@@ -15,8 +16,15 @@ import com.yukai.team.matchservice.opponentanalysis.repository.FlaTeamRepository
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -25,11 +33,16 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class FlaTeamMappingServiceImplTest {
+
+    private static final Long TOURNAMENT_ID = 5L;
+    private static final Long INTERNAL_TEAM_ID = 12L;
+    private static final Long FLA_CHAMPIONNAT_ID = 1365L;
+    private static final Long FLA_SAISON_ID = 15L;
+    private static final Long FLA_TEAM_ID = 6580L;
 
     @Mock
     private FlaTeamMappingRepository flaTeamMappingRepository;
@@ -41,158 +54,828 @@ class FlaTeamMappingServiceImplTest {
     private TeamServiceClient teamServiceClient;
     @Mock
     private TournamentClient tournamentClient;
+    @InjectMocks
+    private FlaTeamMappingServiceImpl service;
+    @Captor
+    private ArgumentCaptor<FlaTeamMapping> mappingCaptor;
 
     @Test
-    void upsertCreatesMapping() {
+    void upsertMapping_shouldCreateNewMapping_whenMappingDoesNotExist() {
+        // Given
         commonValidations();
-        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L)).thenReturn(Optional.empty());
-        when(flaTeamMappingRepository.save(any(FlaTeamMapping.class))).thenAnswer(invocation -> {
-            FlaTeamMapping mapping = invocation.getArgument(0);
-            mapping.setId(1L);
-            return mapping;
-        });
 
-        var response = service().upsertMapping(5L, 12L, request());
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.empty());
+
+        when(flaTeamMappingRepository.save(any(FlaTeamMapping.class)))
+                .thenAnswer(invocation -> {
+                    FlaTeamMapping mapping = invocation.getArgument(0);
+                    mapping.setId(1L);
+                    return mapping;
+                });
+
+        // When
+        FlaTeamMappingResponse response = service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        );
+
+        // Then
+        verify(flaTeamMappingRepository).save(mappingCaptor.capture());
+
+        FlaTeamMapping savedMapping = mappingCaptor.getValue();
+
+        assertThat(savedMapping.getInternalTournamentId())
+                .isEqualTo(TOURNAMENT_ID);
+        assertThat(savedMapping.getInternalTeamId())
+                .isEqualTo(INTERNAL_TEAM_ID);
+        assertThat(savedMapping.getFlaChampionnatId())
+                .isEqualTo(FLA_CHAMPIONNAT_ID);
+        assertThat(savedMapping.getFlaSaisonId())
+                .isEqualTo(FLA_SAISON_ID);
+        assertThat(savedMapping.getFlaTeamId())
+                .isEqualTo(FLA_TEAM_ID);
+        assertThat(savedMapping.getFlaTeamName())
+                .isEqualTo("FLA Team");
 
         assertThat(response.getId()).isEqualTo(1L);
-        assertThat(response.getInternalTeamName()).isEqualTo("Internal Team");
-        assertThat(response.getFlaTeamName()).isEqualTo("FLA Team");
+        assertThat(response.getInternalTournamentId())
+                .isEqualTo(TOURNAMENT_ID);
+        assertThat(response.getInternalTeamId())
+                .isEqualTo(INTERNAL_TEAM_ID);
+        assertThat(response.getInternalTeamName())
+                .isEqualTo("Internal Team");
+        assertThat(response.getFlaChampionnatId())
+                .isEqualTo(FLA_CHAMPIONNAT_ID);
+        assertThat(response.getFlaSaisonId())
+                .isEqualTo(FLA_SAISON_ID);
+        assertThat(response.getFlaTeamId())
+                .isEqualTo(FLA_TEAM_ID);
+        assertThat(response.getFlaTeamName())
+                .isEqualTo("FLA Team");
+
+        verifyCommonValidationCalls();
+        verifyNoMoreInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaChampionnatRepository,
+                flaTeamRepository,
+                flaTeamMappingRepository
+        );
     }
 
     @Test
-    void upsertUpdatesExistingMappingAndPreservesCreatedAt() {
-        OffsetDateTime createdAt = OffsetDateTime.parse("2026-08-04T20:00:00Z");
-        FlaTeamMapping existing = mapping(5L, 12L, 1365L, 15L, 7000L, "Old FLA Team");
+    void upsertMapping_shouldUpdateExistingMapping_andPreserveCreatedAt() {
+        // Given
+        OffsetDateTime originalCreatedAt =
+                OffsetDateTime.parse("2026-08-04T20:00:00Z");
+
+        FlaTeamMapping existing = mapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                1365L,
+                15L,
+                7000L,
+                "Old FLA Team"
+        );
         existing.setId(1L);
-        existing.setCreatedAt(createdAt);
+        existing.setCreatedAt(originalCreatedAt);
+
         commonValidations();
-        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L)).thenReturn(Optional.of(existing));
-        when(flaTeamMappingRepository.save(existing)).thenReturn(existing);
 
-        var response = service().upsertMapping(5L, 12L, request());
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.of(existing));
 
-        assertThat(existing.getCreatedAt()).isEqualTo(createdAt);
-        assertThat(existing.getFlaTeamId()).isEqualTo(6580L);
-        assertThat(existing.getFlaTeamName()).isEqualTo("FLA Team");
-        assertThat(response.getFlaTeamId()).isEqualTo(6580L);
+        when(flaTeamMappingRepository.save(existing))
+                .thenReturn(existing);
+
+        // When
+        FlaTeamMappingResponse response = service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        );
+
+        // Then
+        verify(flaTeamMappingRepository).save(mappingCaptor.capture());
+
+        FlaTeamMapping savedMapping = mappingCaptor.getValue();
+
+        assertThat(savedMapping).isSameAs(existing);
+        assertThat(savedMapping.getCreatedAt())
+                .isEqualTo(originalCreatedAt);
+
+        assertThat(savedMapping.getInternalTournamentId())
+                .isEqualTo(TOURNAMENT_ID);
+        assertThat(savedMapping.getInternalTeamId())
+                .isEqualTo(INTERNAL_TEAM_ID);
+        assertThat(savedMapping.getFlaChampionnatId())
+                .isEqualTo(FLA_CHAMPIONNAT_ID);
+        assertThat(savedMapping.getFlaSaisonId())
+                .isEqualTo(FLA_SAISON_ID);
+        assertThat(savedMapping.getFlaTeamId())
+                .isEqualTo(FLA_TEAM_ID);
+        assertThat(savedMapping.getFlaTeamName())
+                .isEqualTo("FLA Team");
+
+        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response.getFlaTeamId())
+                .isEqualTo(FLA_TEAM_ID);
+        assertThat(response.getFlaTeamName())
+                .isEqualTo("FLA Team");
+        assertThat(response.getCreatedAt())
+                .isEqualTo(originalCreatedAt);
+
+        verifyCommonValidationCalls();
     }
 
     @Test
-    void upsertFailsWhenFlaTeamDoesNotExist() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaChampionnatRepository.findByChampionnatIdAndSaisonId(1365L, 15L)).thenReturn(Optional.of(new FlaChampionnat()));
-        when(flaTeamRepository.findByChampionnatIdAndSaisonIdAndFlaTeamId(1365L, 15L, 6580L)).thenReturn(Optional.empty());
+    void upsertMapping_shouldAllowUpdatingMappingToItsCurrentFlaTeam() {
+        // Given
+        FlaTeamMapping existing = mapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                FLA_CHAMPIONNAT_ID,
+                FLA_SAISON_ID,
+                FLA_TEAM_ID,
+                "FLA Team"
+        );
+        existing.setId(1L);
 
-        assertThatThrownBy(() -> service().upsertMapping(5L, 12L, request()))
+        commonValidations();
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.of(existing));
+
+        when(flaTeamMappingRepository.save(existing))
+                .thenReturn(existing);
+
+        // When
+        FlaTeamMappingResponse response = service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        );
+
+        // Then
+        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response.getFlaTeamId()).isEqualTo(FLA_TEAM_ID);
+
+        verify(flaTeamMappingRepository)
+                .existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
+                        TOURNAMENT_ID,
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID,
+                        INTERNAL_TEAM_ID
+                );
+
+        verify(flaTeamMappingRepository).save(existing);
+    }
+
+    @Test
+    void upsertMapping_shouldFail_whenFlaTeamDoesNotExist() {
+        // Given
+        mockValidTournament();
+        mockValidInternalTeam();
+        mockValidFlaChampionnat();
+
+        when(flaTeamRepository
+                .findByChampionnatIdAndSaisonIdAndFlaTeamId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID
+                ))
+                .thenReturn(Optional.empty());
+
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessage("FLA team not found");
+
+        verify(flaTeamMappingRepository, never()).save(any());
+        verify(flaTeamMappingRepository, never())
+                .existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
+                        anyLong(),
+                        anyLong(),
+                        anyLong(),
+                        anyLong(),
+                        anyLong()
+                );
     }
 
     @Test
-    void upsertFailsWhenFlaChampionnatDoesNotExist() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaChampionnatRepository.findByChampionnatIdAndSaisonId(1365L, 15L)).thenReturn(Optional.empty());
+    void upsertMapping_shouldFail_whenFlaChampionnatDoesNotExist() {
+        // Given
+        mockValidTournament();
+        mockValidInternalTeam();
 
-        assertThatThrownBy(() -> service().upsertMapping(5L, 12L, request()))
+        when(flaChampionnatRepository
+                .findByChampionnatIdAndSaisonId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID
+                ))
+                .thenReturn(Optional.empty());
+
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessage("FLA championnat not found");
+
+        verifyNoInteractions(flaTeamRepository);
+        verify(flaTeamMappingRepository, never()).save(any());
     }
 
     @Test
-    void upsertFailsWhenTournamentDoesNotExist() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(null);
+    void upsertMapping_shouldFail_whenTournamentDoesNotExist() {
+        // Given
+        when(tournamentClient.getTournamentSnapshot(TOURNAMENT_ID))
+                .thenReturn(null);
 
-        assertThatThrownBy(() -> service().upsertMapping(5L, 12L, request()))
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessage("Tournament not found");
+
+        verifyNoInteractions(
+                teamServiceClient,
+                flaChampionnatRepository,
+                flaTeamRepository,
+                flaTeamMappingRepository
+        );
     }
 
     @Test
-    void upsertFailsWhenInternalTeamDoesNotExist() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenThrow(new EntityNotFoundException("Team not found"));
+    void upsertMapping_shouldFail_whenInternalTeamDoesNotExist() {
+        // Given
+        mockValidTournament();
 
-        assertThatThrownBy(() -> service().upsertMapping(5L, 12L, request()))
+        when(teamServiceClient.getTeam(INTERNAL_TEAM_ID))
+                .thenThrow(new EntityNotFoundException("Team not found"));
+
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessage("Team not found");
+
+        verifyNoInteractions(
+                flaChampionnatRepository,
+                flaTeamRepository,
+                flaTeamMappingRepository
+        );
+    }
+
+    @Test
+    void upsertMapping_shouldFail_whenFlaTeamIsMappedToAnotherInternalTeam() {
+        // Given
+        commonValidations();
+
+        when(flaTeamMappingRepository
+                .existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
+                        TOURNAMENT_ID,
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(true);
+
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
+                .isInstanceOf(FlaMappingConflictException.class)
+                .hasMessage(
+                        "FLA team is already mapped in this tournament"
+                );
+
+        verify(flaTeamMappingRepository, never())
+                .findByInternalTournamentIdAndInternalTeamId(
+                        anyLong(),
+                        anyLong()
+                );
+        verify(flaTeamMappingRepository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void upsertMapping_shouldFail_whenTournamentIdIsInvalid(
+            Long invalidTournamentId
+    ) {
+        assertThatThrownBy(() -> service.upsertMapping(
+                invalidTournamentId,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tournamentId");
+
+        verifyNoInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaChampionnatRepository,
+                flaTeamRepository,
+                flaTeamMappingRepository
+        );
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void upsertMapping_shouldFail_whenTeamIdIsInvalid(Long invalidTeamId) {
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                invalidTeamId,
+                request()
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("teamId");
+
+        verifyNoInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaChampionnatRepository,
+                flaTeamRepository,
+                flaTeamMappingRepository
+        );
+    }
+
+    @Test
+    void upsertMapping_shouldPropagatePersistenceFailure() {
+        // Given
+        commonValidations();
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.empty());
+
+        when(flaTeamMappingRepository.save(any(FlaTeamMapping.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "Mapping constraint violation"
+                ));
+
+        // When / Then
+        assertThatThrownBy(() -> service.upsertMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                request()
+        ))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("Mapping constraint violation");
+
+        verify(flaTeamMappingRepository).save(any(FlaTeamMapping.class));
+    }
+
+    private void commonValidations() {
+        mockValidTournament();
+        mockValidInternalTeam();
+        mockValidFlaChampionnat();
+        mockValidFlaTeam();
+
+        when(flaTeamMappingRepository
+                .existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
+                        TOURNAMENT_ID,
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(false);
+    }
+
+    private void mockValidTournament() {
+        TournamentSnapshotResponse tournament =
+                new TournamentSnapshotResponse();
+        tournament.setId(TOURNAMENT_ID);
+
+        when(tournamentClient.getTournamentSnapshot(TOURNAMENT_ID))
+                .thenReturn(tournament);
+    }
+
+    private void mockValidInternalTeam() {
+        when(teamServiceClient.getTeam(INTERNAL_TEAM_ID))
+                .thenReturn(team(INTERNAL_TEAM_ID, "Internal Team"));
+    }
+
+    private void mockValidFlaChampionnat() {
+        FlaChampionnat championnat = new FlaChampionnat();
+        championnat.setChampionnatId(FLA_CHAMPIONNAT_ID);
+        championnat.setSaisonId(FLA_SAISON_ID);
+
+        when(flaChampionnatRepository
+                .findByChampionnatIdAndSaisonId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID
+                ))
+                .thenReturn(Optional.of(championnat));
+    }
+
+    private void mockValidFlaTeam() {
+        FlaTeam flaTeam = new FlaTeam();
+        flaTeam.setChampionnatId(FLA_CHAMPIONNAT_ID);
+        flaTeam.setSaisonId(FLA_SAISON_ID);
+        flaTeam.setFlaTeamId(FLA_TEAM_ID);
+        flaTeam.setTeamName("FLA Team");
+
+        when(flaTeamRepository
+                .findByChampionnatIdAndSaisonIdAndFlaTeamId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID
+                ))
+                .thenReturn(Optional.of(flaTeam));
+    }
+
+    private void verifyCommonValidationCalls() {
+        verify(tournamentClient)
+                .getTournamentSnapshot(TOURNAMENT_ID);
+        verify(teamServiceClient)
+                .getTeam(INTERNAL_TEAM_ID);
+        verify(flaChampionnatRepository)
+                .findByChampionnatIdAndSaisonId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID
+                );
+        verify(flaTeamRepository)
+                .findByChampionnatIdAndSaisonIdAndFlaTeamId(
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID
+                );
+        verify(flaTeamMappingRepository)
+                .existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
+                        TOURNAMENT_ID,
+                        FLA_CHAMPIONNAT_ID,
+                        FLA_SAISON_ID,
+                        FLA_TEAM_ID,
+                        INTERNAL_TEAM_ID
+                );
+        verify(flaTeamMappingRepository)
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                );
+    }
+
+    @Test
+    void getMappingsShouldReturnSortedMappings() {
+        mockValidTournament();
+
+        FlaTeamMapping mapping1 = mapping(
+                5L,
+                2L,
+                1365L,
+                15L,
+                6580L,
+                "FLA Team B"
+        );
+
+        FlaTeamMapping mapping2 = mapping(
+                5L,
+                1L,
+                1365L,
+                15L,
+                6581L,
+                "FLA Team A"
+        );
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdOrderByInternalTeamIdAsc(5L))
+                .thenReturn(List.of(mapping1, mapping2));
+
+        when(teamServiceClient.getTeam(1L))
+                .thenReturn(team(1L, "Arsenal"));
+
+        when(teamServiceClient.getTeam(2L))
+                .thenReturn(team(2L, "Chelsea"));
+
+        List<FlaTeamMappingResponse> responses =
+                service.getMappings(5L);
+
+        assertThat(responses)
+                .hasSize(2);
+
+        // 最终按 InternalTeamName 排序
+        assertThat(responses.get(0).getInternalTeamName())
+                .isEqualTo("Arsenal");
+
+        assertThat(responses.get(1).getInternalTeamName())
+                .isEqualTo("Chelsea");
+
+        verify(flaTeamMappingRepository)
+                .findByInternalTournamentIdOrderByInternalTeamIdAsc(5L);
+
+        verify(teamServiceClient).getTeam(1L);
+        verify(teamServiceClient).getTeam(2L);
+    }
+
+    @Test
+    void getMappingsShouldReturnEmptyList() {
+
+        mockValidTournament();
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdOrderByInternalTeamIdAsc(5L))
+                .thenReturn(List.of());
+
+        List<FlaTeamMappingResponse> responses =
+                service.getMappings(5L);
+
+        assertThat(responses).isEmpty();
+
+        verifyNoInteractions(teamServiceClient);
+    }
+
+    @Test
+    void getMappingsShouldFailWhenTournamentDoesNotExist() {
+
+        when(tournamentClient.getTournamentSnapshot(5L))
+                .thenReturn(null);
+
+        assertThatThrownBy(() -> service.getMappings(5L))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessage("Tournament not found");
+
+        verifyNoInteractions(
+                flaTeamMappingRepository,
+                teamServiceClient
+        );
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void getMappingsShouldFailWhenTournamentIdInvalid(Long id) {
+
+        assertThatThrownBy(() -> service.getMappings(id))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(
+                tournamentClient,
+                flaTeamMappingRepository,
+                teamServiceClient
+        );
+    }
+
+    @Test
+    void getMappingShouldReturnResponse() {
+
+        mockValidTournament();
+
+        when(teamServiceClient.getTeam(12L))
+                .thenReturn(team(12L, "Internal Team"));
+
+        FlaTeamMapping mapping = mapping(
+                5L,
+                12L,
+                1365L,
+                15L,
+                6580L,
+                "FLA Team"
+        );
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(5L, 12L))
+                .thenReturn(Optional.of(mapping));
+
+        FlaTeamMappingResponse response =
+                service.getMapping(5L, 12L);
+
+        assertThat(response.getInternalTeamName())
+                .isEqualTo("Internal Team");
+
+        assertThat(response.getFlaTeamName())
+                .isEqualTo("FLA Team");
+
+        verify(teamServiceClient).getTeam(12L);
+
+        verify(flaTeamMappingRepository)
+                .findByInternalTournamentIdAndInternalTeamId(5L, 12L);
+    }
+
+    @Test
+    void getMappingShouldFailWhenMappingNotFound() {
+
+        mockValidTournament();
+
+        when(teamServiceClient.getTeam(12L))
+                .thenReturn(team(12L, "Internal Team"));
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(5L, 12L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                service.getMapping(5L, 12L))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessage("FLA team mapping not found");
+    }
+
+    @Test
+    void getMappingShouldFailWhenInternalTeamDoesNotExist() {
+
+        mockValidTournament();
+
+        when(teamServiceClient.getTeam(12L))
+                .thenThrow(new EntityNotFoundException("Team not found"));
+
+        assertThatThrownBy(() ->
+                service.getMapping(5L, 12L))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessage("Team not found");
     }
 
     @Test
-    void upsertFailsWhenFlaTeamIsOccupiedByAnotherInternalTeam() {
-        commonValidations();
-        when(flaTeamMappingRepository.existsByInternalTournamentIdAndFlaChampionnatIdAndFlaSaisonIdAndFlaTeamIdAndInternalTeamIdNot(
-                5L,
-                1365L,
-                15L,
-                6580L,
-                12L
-        )).thenReturn(true);
+    void deleteMapping_shouldDeleteExistingMapping() {
+        // Given
+        mockValidTournament();
+        mockValidInternalTeam();
 
-        assertThatThrownBy(() -> service().upsertMapping(5L, 12L, request()))
-                .isInstanceOf(FlaMappingConflictException.class)
-                .hasMessage("FLA team is already mapped in this tournament");
+        FlaTeamMapping existing = mapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID,
+                FLA_CHAMPIONNAT_ID,
+                FLA_SAISON_ID,
+                FLA_TEAM_ID,
+                "FLA Team"
+        );
+        existing.setId(1L);
+
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.of(existing));
+
+        // When
+        service.deleteMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID
+        );
+
+        // Then
+        verify(tournamentClient)
+                .getTournamentSnapshot(TOURNAMENT_ID);
+
+        verify(teamServiceClient)
+                .getTeam(INTERNAL_TEAM_ID);
+
+        verify(flaTeamMappingRepository)
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                );
+
+        verify(flaTeamMappingRepository)
+                .delete(existing);
+
+        verifyNoMoreInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaTeamMappingRepository
+        );
     }
 
     @Test
-    void getMappingsReturnsAllSortedByInternalTeamName() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(flaTeamMappingRepository.findByInternalTournamentIdOrderByInternalTeamIdAsc(5L))
-                .thenReturn(List.of(
-                        mapping(5L, 12L, 1365L, 15L, 6580L, "FLA B"),
-                        mapping(5L, 11L, 1365L, 15L, 6579L, "FLA A")
-                ));
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "B Team"));
-        when(teamServiceClient.getTeam(11L)).thenReturn(team(11L, "A Team"));
+    void deleteMapping_shouldFail_whenMappingDoesNotExist() {
+        // Given
+        mockValidTournament();
+        mockValidInternalTeam();
 
-        var response = service().getMappings(5L);
+        when(flaTeamMappingRepository
+                .findByInternalTournamentIdAndInternalTeamId(
+                        TOURNAMENT_ID,
+                        INTERNAL_TEAM_ID
+                ))
+                .thenReturn(Optional.empty());
 
-        assertThat(response).extracting("internalTeamName").containsExactly("A Team", "B Team");
-    }
-
-    @Test
-    void getMappingReturnsOne() {
-        FlaTeamMapping mapping = mapping(5L, 12L, 1365L, 15L, 6580L, "FLA Team");
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L)).thenReturn(Optional.of(mapping));
-
-        var response = service().getMapping(5L, 12L);
-
-        assertThat(response.getInternalTeamId()).isEqualTo(12L);
-        assertThat(response.getFlaTeamId()).isEqualTo(6580L);
-    }
-
-    @Test
-    void deleteMappingDeletesExistingMapping() {
-        FlaTeamMapping mapping = mapping(5L, 12L, 1365L, 15L, 6580L, "FLA Team");
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L)).thenReturn(Optional.of(mapping));
-
-        service().deleteMapping(5L, 12L);
-
-        verify(flaTeamMappingRepository).delete(mapping);
-    }
-
-    @Test
-    void deleteMappingFailsWhenMissing() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service().deleteMapping(5L, 12L))
+        // When / Then
+        assertThatThrownBy(() -> service.deleteMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID
+        ))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessage("FLA team mapping not found");
+
+        verify(flaTeamMappingRepository, never())
+                .delete(any(FlaTeamMapping.class));
     }
 
-    private void commonValidations() {
-        when(tournamentClient.getTournamentSnapshot(5L)).thenReturn(new TournamentSnapshotResponse());
-        when(teamServiceClient.getTeam(12L)).thenReturn(team(12L, "Internal Team"));
-        when(flaChampionnatRepository.findByChampionnatIdAndSaisonId(1365L, 15L)).thenReturn(Optional.of(new FlaChampionnat()));
-        when(flaTeamRepository.findByChampionnatIdAndSaisonIdAndFlaTeamId(1365L, 15L, 6580L))
-                .thenReturn(Optional.of(flaTeam()));
+    @Test
+    void deleteMapping_shouldFail_whenTournamentDoesNotExist() {
+        // Given
+        when(tournamentClient.getTournamentSnapshot(TOURNAMENT_ID))
+                .thenReturn(null);
+
+        // When / Then
+        assertThatThrownBy(() -> service.deleteMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID
+        ))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessage("Tournament not found");
+
+        verifyNoInteractions(
+                teamServiceClient,
+                flaTeamMappingRepository
+        );
+    }
+
+    @Test
+    void deleteMapping_shouldFail_whenInternalTeamDoesNotExist() {
+        // Given
+        mockValidTournament();
+
+        when(teamServiceClient.getTeam(INTERNAL_TEAM_ID))
+                .thenThrow(new EntityNotFoundException("Team not found"));
+
+        // When / Then
+        assertThatThrownBy(() -> service.deleteMapping(
+                TOURNAMENT_ID,
+                INTERNAL_TEAM_ID
+        ))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessage("Team not found");
+
+        verifyNoInteractions(flaTeamMappingRepository);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void deleteMapping_shouldFail_whenTournamentIdIsInvalid(
+            Long invalidTournamentId
+    ) {
+        // When / Then
+        assertThatThrownBy(() -> service.deleteMapping(
+                invalidTournamentId,
+                INTERNAL_TEAM_ID
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tournamentId");
+
+        verifyNoInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaTeamMappingRepository
+        );
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void deleteMapping_shouldFail_whenTeamIdIsInvalid(
+            Long invalidTeamId
+    ) {
+        // When / Then
+        assertThatThrownBy(() -> service.deleteMapping(
+                TOURNAMENT_ID,
+                invalidTeamId
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("teamId");
+
+        verifyNoInteractions(
+                tournamentClient,
+                teamServiceClient,
+                flaTeamMappingRepository
+        );
     }
 
     private FlaTeamMappingServiceImpl service() {
