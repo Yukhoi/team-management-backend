@@ -3,6 +3,7 @@ package com.yukai.team.matchservice.opponentanalysis.service;
 import com.yukai.team.matchservice.config.JacksonConfig;
 import com.yukai.team.matchservice.entity.HomeAway;
 import com.yukai.team.matchservice.opponentanalysis.config.OpponentAiProperties;
+import com.yukai.team.matchservice.opponentanalysis.dto.ai.GeneratedOpponentReport;
 import com.yukai.team.matchservice.opponentanalysis.dto.ai.OpponentAnalysisInput;
 import com.yukai.team.matchservice.opponentanalysis.dto.ai.ThreatLevel;
 import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAiException;
@@ -19,8 +20,10 @@ import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.net.SocketTimeoutException;
+import java.lang.reflect.RecordComponent;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,7 +51,7 @@ class OpenRouterOpponentReportGeneratorTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer test-key"))
                 .andExpect(jsonPath("$.model").value("test-model"))
-                .andExpect(jsonPath("$.max_tokens").value(4000))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
                 .andExpect(jsonPath("$.messages[0].role").value("system"))
                 .andExpect(jsonPath("$.messages[1].role").value("user"))
                 .andExpect(jsonPath("$.reasoning").doesNotExist())
@@ -93,6 +96,113 @@ class OpenRouterOpponentReportGeneratorTest {
         var report = generator(builder.build(), configuredProperties()).generate(input());
 
         assertThat(report.threatLevel()).isEqualTo(ThreatLevel.LOW);
+        server.verify();
+    }
+
+    @Test
+    void failsWithInvalidResponseForTruncatedJsonWhenFinishReasonIsStopAndLogsDiagnostics(CapturedOutput output) {
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andRespond(withSuccess(openRouterResponse("{\n\"threatLevel\":", "stop", 101, 8192, 8293), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
+                .isInstanceOf(OpponentAiException.class)
+                .satisfies(ex -> assertOpponentAiException(ex, HttpStatus.BAD_GATEWAY, "AI_INVALID_RESPONSE"))
+                .hasMessage("OpenRouter returned invalid report JSON");
+        assertThat(output.getOut())
+                .contains("OpenRouter response received")
+                .contains("finishReason=stop")
+                .contains("rawContentLength=16")
+                .contains("normalizedContentLength=16")
+                .contains("promptTokens=101")
+                .contains("completionTokens=8192")
+                .contains("totalTokens=8293")
+                .contains("maxTokensRequestField=max_tokens")
+                .contains("configuredOutputTokenLimit=8192")
+                .contains("outputTokenLimit=8192")
+                .contains("OpenRouter returned invalid report JSON")
+                .contains("exceptionClass=com.fasterxml.jackson.core.io.JsonEOFException")
+                .contains("normalizedContentPrefix={");
+        server.verify();
+    }
+
+    @Test
+    void mapsLengthFinishReasonWithNonEmptyContentToTruncatedWithoutParsing(CapturedOutput output) {
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
+                .andRespond(withSuccess(openRouterResponse("not-json", "length", 101, 8192, 8293), MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
+                .andRespond(withSuccess(openRouterResponse("not-json", "length", 102, 8192, 8294), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
+                .isInstanceOf(OpponentAiException.class)
+                .satisfies(ex -> assertOpponentAiException(ex, HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED"))
+                .hasMessage("AI response truncated because output token limit was reached");
+        assertThat(output.getOut())
+                .contains("finishReason=length")
+                .contains("completionTokens=8192")
+                .contains("outputTokenLimit=8192")
+                .contains("OpenRouter response truncated due to output token limit")
+                .contains("totalTokens=8294")
+                .doesNotContain("Unrecognized token 'not'");
+        server.verify();
+    }
+
+    @Test
+    void generatedOpponentReportSchemaRemainsUnchanged() {
+        List<String> componentNames = Arrays.stream(GeneratedOpponentReport.class.getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList();
+
+        assertThat(componentNames).containsExactly(
+                "threatLevel",
+                "summary",
+                "comparison",
+                "strengths",
+                "weaknesses",
+                "recommendations",
+                "dataLimitations"
+        );
+    }
+
+    @Test
+    void normalizationDoesNotTruncateValidRawJsonWithWhitespace(CapturedOutput output) {
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        String json = reportJson("LOW", "测试。");
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andRespond(withSuccess(openRouterResponse("\n  " + json + "  \n", "stop", 10, 20, 30), MediaType.APPLICATION_JSON));
+
+        var report = generator(builder.build(), configuredProperties()).generate(input());
+
+        assertThat(report.threatLevel()).isEqualTo(ThreatLevel.LOW);
+        assertThat(output.getOut())
+                .contains("rawContentLength=" + (json.length() + 6))
+                .contains("normalizedContentLength=" + json.length())
+                .contains("finishReason=stop");
+        server.verify();
+    }
+
+    @Test
+    void diagnosticPreviewIsBoundedAndIncludesSuffixOnlyForLongContent(CapturedOutput output) {
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        String longInvalidJson = "{\"summary\":\"" + "a".repeat(2500) + "\",\"tail\":\"" + "z".repeat(2500);
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andRespond(withSuccess(openRouterResponse(longInvalidJson, "stop", 1, 2, 3), MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
+                .isInstanceOf(OpponentAiException.class)
+                .satisfies(ex -> assertOpponentAiException(ex, HttpStatus.BAD_GATEWAY, "AI_INVALID_RESPONSE"));
+        assertThat(output.getOut())
+                .contains("contentPrefix=")
+                .contains("contentSuffix=")
+                .contains("normalizedContentPrefix=")
+                .contains("normalizedContentSuffix=");
         server.verify();
     }
 
@@ -291,7 +401,7 @@ class OpenRouterOpponentReportGeneratorTest {
         assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
                 .isInstanceOf(OpponentAiException.class)
                 .satisfies(ex -> assertOpponentAiException(ex, HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED"))
-                .hasMessage("The model exhausted its output token budget before producing final content");
+                .hasMessage("AI response truncated because output token limit was reached");
         server.verify();
     }
 
@@ -343,10 +453,10 @@ class OpenRouterOpponentReportGeneratorTest {
         RestClient.Builder builder = builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
-                .andExpect(jsonPath("$.max_tokens").value(4000))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
                 .andRespond(withSuccess(emptyContentResponse("length", "length", "内部推理内容", null), MediaType.APPLICATION_JSON));
         server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
-                .andExpect(jsonPath("$.max_tokens").value(5000))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
                 .andRespond(withSuccess(openRouterResponse(reportJson("HIGH", "第二次生成成功。"), 10, 20, 30), MediaType.APPLICATION_JSON));
 
         var report = generator(builder.build(), configuredProperties()).generate(input());
@@ -360,10 +470,10 @@ class OpenRouterOpponentReportGeneratorTest {
         RestClient.Builder builder = builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
-                .andExpect(jsonPath("$.max_tokens").value(4000))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
                 .andRespond(withSuccess(emptyContentResponse("length", "length", "内部推理内容", null), MediaType.APPLICATION_JSON));
         server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
-                .andExpect(jsonPath("$.max_tokens").value(5000))
+                .andExpect(jsonPath("$.max_tokens").value(8192))
                 .andRespond(withSuccess(emptyContentResponse("length", "length", "内部推理内容", null), MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
@@ -485,6 +595,10 @@ class OpenRouterOpponentReportGeneratorTest {
     }
 
     private String openRouterResponse(String content, Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+        return openRouterResponse(content, "stop", promptTokens, completionTokens, totalTokens);
+    }
+
+    private String openRouterResponse(String content, String finishReason, Integer promptTokens, Integer completionTokens, Integer totalTokens) {
         String usage = promptTokens == null ? "null" : """
                 {"prompt_tokens": %d, "completion_tokens": %d, "total_tokens": %d}
                 """.formatted(promptTokens, completionTokens, totalTokens);
@@ -499,11 +613,11 @@ class OpenRouterOpponentReportGeneratorTest {
                       "role": "assistant",
                       "content": "%s"
                     },
-                    "finish_reason": "stop"
+                    "finish_reason": "%s"
                   }],
                   "usage": %s
                 }
-                """.formatted(escape(content), usage);
+                """.formatted(escape(content), finishReason, usage);
     }
 
     private String reportJson(String threatLevel, String summary) {
@@ -535,8 +649,8 @@ class OpenRouterOpponentReportGeneratorTest {
                   }],
                   "usage": {
                     "prompt_tokens": 100,
-                    "completion_tokens": 4000,
-                    "total_tokens": 4100,
+                    "completion_tokens": 8192,
+                    "total_tokens": 8292,
                     "reasoning_tokens": 3990
                   }
                 }

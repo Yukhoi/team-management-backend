@@ -29,7 +29,7 @@ public class OpponentAiProperties {
     @NotNull
     private Duration readTimeout = Duration.ofSeconds(45);
 
-    private Integer maxOutputTokens = 4000;
+    private Integer maxOutputTokens = 8192;
 
     private BigDecimal temperature = new BigDecimal("0.2");
 

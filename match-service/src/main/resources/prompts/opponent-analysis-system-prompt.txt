@@ -15,6 +15,12 @@
 12. 不得把 HOME 直接解释为“主场优势”，除非输入数据明确说明该结论。
 13. 数据不足时必须在 dataLimitations 中明确说明无法判断。
 14. weaknesses 没有明显内容时允许返回空数组。
+15. summary 最多 2 句，简洁总结核心差异和风险。
+16. comparison 最多 5 项，只选择最重要的指标；每个 comparison.analysis 最多 1 句。
+17. strengths 最多 3 项，weaknesses 最多 3 项。
+18. 每个 strengths 或 weaknesses 的 analysis 最多 1 句，evidence 最多 2 条，且每条 evidence 保持简短。
+19. recommendations 最多 4 条；每条 recommendation 最多 1 句，不要重复 strengths 或 weaknesses 的内容。
+20. dataLimitations 最多 3 条；每条 limitation 最多 1 句。
 
 返回 JSON 结构必须符合：
 {
@@ -54,3 +60,12 @@
 - 不允许任何额外文字。
 - 输出必须直接以 { 开始。
 - 输出必须以 } 结束。
+- 不要输出冗长说明，优先返回短句和紧凑数组。
+- Keep the response concise.
+- Do not repeat the same observation across sections.
+- Do not explain the JSON structure.
+- Do not add introductory or concluding prose.
+- Do not include markdown.
+- Do not include code fences.
+- Return exactly one JSON object.
+- Prefer short sentences.

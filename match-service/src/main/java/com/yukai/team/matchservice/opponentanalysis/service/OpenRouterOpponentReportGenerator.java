@@ -33,7 +33,9 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
     private static final Logger log = LoggerFactory.getLogger(OpenRouterOpponentReportGenerator.class);
     private static final String SYSTEM_ROLE = "system";
     private static final String USER_ROLE = "user";
-    private static final int MAX_RETRY_OUTPUT_TOKENS = 6000;
+    private static final int CONTENT_PREVIEW_LIMIT = 1500;
+    private static final int DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+    private static final int MAX_RETRY_OUTPUT_TOKENS = DEFAULT_MAX_OUTPUT_TOKENS;
     private static final Pattern LONG_ENGLISH_SENTENCE = Pattern.compile("(?i)\\b[a-z]+(?:[\\s,.'-]+[a-z]+){7,}\\b");
 
     private final RestClient openRouterRestClient;
@@ -68,8 +70,14 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
         for (int attempt = 0; attempt < 2; attempt++) {
             OpenRouterChatCompletionResponse response = callWithRetry(input, outputTokens);
             try {
-                String content = extractContent(response);
-                GeneratedOpponentReport report = parseReport(content);
+                OpenRouterChatCompletionResponse.Choice choice = firstChoice(response);
+                String content = extractContent(response, choice, outputTokens);
+                String normalizedContent = normalizeReportContent(content);
+                logReportContentDiagnostics(response, choice, content, normalizedContent, outputTokens);
+                if (isLengthFinishReason(choice)) {
+                    throw truncatedResponse(response, choice, content, normalizedContent, outputTokens);
+                }
+                GeneratedOpponentReport report = parseReport(normalizedContent);
                 validateReport(report);
                 OpenRouterChatCompletionResponse.Usage usage = response.usage();
                 return new OpponentReportGenerationResult(
@@ -192,8 +200,16 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
 
     private GeneratedOpponentReport parseReport(String content) {
         try {
-            return objectMapper.readValue(stripCodeFence(content), GeneratedOpponentReport.class);
+            return objectMapper.readValue(content, GeneratedOpponentReport.class);
         } catch (JsonProcessingException exception) {
+            log.warn(
+                    "OpenRouter returned invalid report JSON, exceptionClass={}, exceptionMessage={}, normalizedContentLength={}, normalizedContentPrefix={}, normalizedContentSuffix={}",
+                    exception.getClass().getName(),
+                    exception.getOriginalMessage(),
+                    length(content),
+                    previewPrefix(content),
+                    previewSuffix(content)
+            );
             throw new OpponentAiException(
                     HttpStatus.BAD_GATEWAY,
                     "AI_INVALID_RESPONSE",
@@ -277,6 +293,10 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
     }
 
     private String extractContent(OpenRouterChatCompletionResponse response) {
+        return extractContent(response, firstChoice(response), configuredMaxOutputTokens());
+    }
+
+    private OpenRouterChatCompletionResponse.Choice firstChoice(OpenRouterChatCompletionResponse response) {
         if (response == null || response.choices() == null || response.choices().isEmpty()) {
             throw new OpponentAiException(
                     HttpStatus.BAD_GATEWAY,
@@ -284,16 +304,19 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
                     "OpenRouter returned no choices"
             );
         }
-        OpenRouterChatCompletionResponse.Choice choice = response.choices().get(0);
+        return response.choices().get(0);
+    }
+
+    private String extractContent(
+            OpenRouterChatCompletionResponse response,
+            OpenRouterChatCompletionResponse.Choice choice,
+            int outputTokenLimit
+    ) {
         OpenRouterChatCompletionResponse.Message message = choice.message();
         if (message == null || message.content() == null || message.content().isBlank()) {
             logEmptyContent(response, choice, message);
-            if ("length".equalsIgnoreCase(choice.finishReason())) {
-                throw new OpponentAiException(
-                        HttpStatus.BAD_GATEWAY,
-                        "AI_OUTPUT_TRUNCATED",
-                        "The model exhausted its output token budget before producing final content"
-                );
+            if (isLengthFinishReason(choice)) {
+                throw truncatedResponse(response, choice, message == null ? null : message.content(), null, outputTokenLimit);
             }
             if (hasReasoning(message)) {
                 throw new OpponentAiException(
@@ -309,6 +332,67 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
             );
         }
         return message.content();
+    }
+
+    private void logReportContentDiagnostics(
+            OpenRouterChatCompletionResponse response,
+            OpenRouterChatCompletionResponse.Choice choice,
+            String rawContent,
+            String normalizedContent,
+            int maxOutputTokensSent
+    ) {
+        OpenRouterChatCompletionResponse.Usage usage = response.usage();
+        log.warn(
+                "OpenRouter response received, responseId={}, configuredModel={}, model={}, provider={}, finishReason={}, nativeFinishReason={}, rawContentLength={}, normalizedContentLength={}, promptTokens={}, completionTokens={}, totalTokens={}, maxTokensRequestField={}, configuredOutputTokenLimit={}, outputTokenLimit={}, contentPrefix={}, contentSuffix={}",
+                response.id(),
+                properties.getModel(),
+                response.model(),
+                response.provider(),
+                choice.finishReason(),
+                choice.nativeFinishReason(),
+                length(rawContent),
+                length(normalizedContent),
+                usage == null ? null : usage.promptTokens(),
+                usage == null ? null : usage.completionTokens(),
+                usage == null ? null : usage.totalTokens(),
+                "max_tokens",
+                configuredMaxOutputTokens(),
+                maxOutputTokensSent,
+                previewPrefix(rawContent),
+                previewSuffix(rawContent)
+        );
+    }
+
+    private boolean isLengthFinishReason(OpenRouterChatCompletionResponse.Choice choice) {
+        return choice != null && "length".equalsIgnoreCase(choice.finishReason());
+    }
+
+    private OpponentAiException truncatedResponse(
+            OpenRouterChatCompletionResponse response,
+            OpenRouterChatCompletionResponse.Choice choice,
+            String rawContent,
+            String normalizedContent,
+            int outputTokenLimit
+    ) {
+        OpenRouterChatCompletionResponse.Usage usage = response == null ? null : response.usage();
+        log.warn(
+                "OpenRouter response truncated due to output token limit, responseId={}, model={}, finishReason={}, nativeFinishReason={}, rawContentLength={}, normalizedContentLength={}, promptTokens={}, completionTokens={}, totalTokens={}, outputTokenLimit={}",
+                response == null ? null : response.id(),
+                response == null ? null : response.model(),
+                choice == null ? null : choice.finishReason(),
+                choice == null ? null : choice.nativeFinishReason(),
+                length(rawContent),
+                normalizedContent == null ? null : length(normalizedContent),
+                usage == null ? null : usage.promptTokens(),
+                usage == null ? null : usage.completionTokens(),
+                usage == null ? null : usage.totalTokens(),
+                outputTokenLimit
+        );
+        return new OpponentAiException(
+                HttpStatus.BAD_GATEWAY,
+                "AI_OUTPUT_TRUNCATED",
+                "AI response truncated because output token limit was reached"
+        );
     }
 
     private void logEmptyContent(
@@ -345,7 +429,7 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
         return message.reasoning() == null ? 0 : message.reasoning().length();
     }
 
-    private String stripCodeFence(String content) {
+    private String normalizeReportContent(String content) {
         String cleaned = content.trim();
         if (cleaned.startsWith("```json")) {
             cleaned = cleaned.substring(7).trim();
@@ -356,6 +440,26 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
             cleaned = cleaned.substring(0, cleaned.length() - 3).trim();
         }
         return cleaned;
+    }
+
+    private int length(String content) {
+        return content == null ? 0 : content.length();
+    }
+
+    private String previewPrefix(String content) {
+        if (content == null) {
+            return null;
+        }
+        return content.length() <= CONTENT_PREVIEW_LIMIT
+                ? content
+                : content.substring(0, CONTENT_PREVIEW_LIMIT);
+    }
+
+    private String previewSuffix(String content) {
+        if (content == null || content.length() <= CONTENT_PREVIEW_LIMIT) {
+            return null;
+        }
+        return content.substring(content.length() - CONTENT_PREVIEW_LIMIT);
     }
 
     private void validateInput(OpponentAnalysisInput input) {
@@ -418,7 +522,7 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
     private int configuredMaxOutputTokens() {
         Integer configured = properties.getMaxOutputTokens();
         if (configured == null || configured < 1) {
-            return 4000;
+            return DEFAULT_MAX_OUTPUT_TOKENS;
         }
         return configured;
     }
