@@ -1,144 +1,129 @@
 package com.yukai.team.matchservice.opponentanalysis.client;
 
+import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
+import com.yukai.team.matchservice.opponentanalysis.config.FlaClientConfig;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
+import com.yukai.team.matchservice.opponentanalysis.parser.FlaStandingsHtmlParser;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
 import java.net.SocketTimeoutException;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class FlaClientImplTest {
+    private MockRestServiceServer server;
+    private FlaClient client;
 
-    private static final MediaType FLA_JSON = new MediaType("application", "json", StandardCharsets.UTF_8);
+    @BeforeEach
+    void setUp() {
+        RestClient.Builder builder = new FlaClientConfig().flaRestClient(new FlaProperties()).mutate();
+        server = MockRestServiceServer.bindTo(builder).build();
+        client = new FlaClientImpl(builder.build(), new FlaStandingsHtmlParser());
+    }
 
     @Test
-    void getStandingsParsesNormalJson() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(content().contentType(FLA_JSON))
-                .andExpect(content().json("{\"championnatId\":1365,\"saisonId\":15}"))
-                .andRespond(withSuccess("""
-                        [{
-                          "IdEquipe": 6580,
-                          "Nom": "YEXIAO PARIS FC",
-                          "Points": 46,
-                          "IdChampionnat": 1365,
-                          "Victoire": 6,
-                          "Egalite": 3,
-                          "Defaite": 17,
-                          "Bp": 63,
-                          "Bc": 134,
-                          "Bonus": -1,
-                          "Forfait": 0,
-                          "CinqDernier": ["won", "lost"],
-                          "Ignored": "value"
-                        }]
-                        """, MediaType.APPLICATION_JSON));
+    void getStandingsRequestsHtmlWithGetAndSeasonQuery() {
+        server.expect(requestTo("https://football-loisir-amateur.fr/championships/16/rankings?season=2"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.ACCEPT, MediaType.TEXT_HTML_VALUE))
+                .andExpect(content().string(""))
+                .andRespond(withSuccess(new ClassPathResource("fla/rankings-representative.html"), MediaType.TEXT_HTML));
 
-        var standings = new FlaClientImpl(builder.build()).getStandings(1365L, 15L);
-
-        assertThat(standings).hasSize(1);
-        assertThat(standings.get(0).getTeamId()).isEqualTo(6580L);
-        assertThat(standings.get(0).getTeamName()).isEqualTo("YEXIAO PARIS FC");
-        assertThat(standings.get(0).getForm()).containsExactly("won", "lost");
+        var standings = client.getStandings(16L, 2L);
+        assertThat(standings).hasSize(2);
+        assertThat(standings.get(0).getTeamId()).isEqualTo(270L);
+        assertThat(standings.get(0).getChampionnatId()).isEqualTo(16L);
         server.verify();
     }
 
     @Test
-    void getStandingsAllowsEmptyArray() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
-
-        assertThat(new FlaClientImpl(builder.build()).getStandings(1365L, 15L)).isEmpty();
+    void getStandingsParsesCapturedPageUsingProductionClientConfiguration() {
+        server.expect(requestTo("https://football-loisir-amateur.fr/championships/16/rankings?season=2"))
+                .andRespond(withSuccess(new ClassPathResource("fla/rankings-16-season-2.html"), MediaType.TEXT_HTML));
+        var standings = client.getStandings(16L, 2L);
+        assertThat(standings).hasSize(14);
+        assertThat(standings.get(0).getTeamId()).isEqualTo(270L);
+        assertThat(standings.get(0).getPoints()).isEqualTo(20);
         server.verify();
     }
 
-    @Test
-    void getStandingsMapsBadRequest() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andRespond(withBadRequest());
+    @ParameterizedTest
+    @ValueSource(strings = {"", "not-html", "[]", "<html><h1>Service unavailable</h1></html>",
+            "<html><form action='/login'><input name='password'></form></html>"})
+    void getStandingsRejectsInvalidSuccessfulResponses(String body) {
+        server.expect(requestTo("https://football-loisir-amateur.fr/championships/16/rankings?season=2"))
+                .andRespond(withSuccess(body, MediaType.TEXT_HTML));
+        assertFailure(client, HttpStatus.BAD_GATEWAY, "FLA_INVALID_RESPONSE");
+        server.verify();
+    }
 
-        assertThatThrownBy(() -> new FlaClientImpl(builder.build()).getStandings(1365L, 15L))
+    @ParameterizedTest
+    @CsvSource({"400, FLA_INVALID_REQUEST", "403, FLA_INVALID_REQUEST", "404, FLA_INVALID_REQUEST",
+            "500, FLA_UNAVAILABLE", "503, FLA_UNAVAILABLE", "302, FLA_HTTP_ERROR"})
+    void getStandingsMapsHttpErrorsWithoutRetainingResponseContent(int status, String code) {
+        server.expect(requestTo("https://football-loisir-amateur.fr/championships/16/rankings?season=2"))
+                .andRespond(withStatus(HttpStatus.valueOf(status))
+                        .body("<html>PRIVATE RESPONSE CONTENT</html>").contentType(MediaType.TEXT_HTML));
+        assertThatThrownBy(() -> client.getStandings(16L, 2L))
                 .isInstanceOf(FlaClientException.class)
+                .hasNoCause()
+                .hasMessageNotContaining("PRIVATE RESPONSE CONTENT")
                 .extracting("httpStatus", "code")
-                .containsExactly(HttpStatus.BAD_GATEWAY, "FLA_INVALID_REQUEST");
-        server.verify();
-    }
-
-    @Test
-    void getStandingsMapsServerError() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andRespond(withServerError());
-
-        assertThatThrownBy(() -> new FlaClientImpl(builder.build()).getStandings(1365L, 15L))
-                .isInstanceOf(FlaClientException.class)
-                .extracting("httpStatus", "code")
-                .containsExactly(HttpStatus.BAD_GATEWAY, "FLA_UNAVAILABLE");
+                .containsExactly(HttpStatus.BAD_GATEWAY, code);
         server.verify();
     }
 
     @Test
     void getStandingsMapsTimeout() {
-        RestClient restClient = RestClient.builder()
-                .baseUrl("https://fla.test")
-                .requestFactory((uri, method) -> {
-                    throw new SocketTimeoutException("timeout");
-                })
-                .build();
-
-        assertThatThrownBy(() -> new FlaClientImpl(restClient).getStandings(1365L, 15L))
-                .isInstanceOf(FlaClientException.class)
-                .extracting("httpStatus", "code")
-                .containsExactly(HttpStatus.GATEWAY_TIMEOUT, "FLA_TIMEOUT");
+        assertFailure(failingClient(new SocketTimeoutException("timeout")),
+                HttpStatus.GATEWAY_TIMEOUT, "FLA_TIMEOUT");
     }
 
     @Test
-    void getStandingsMapsInvalidJson() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andRespond(withSuccess("not-json", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(() -> new FlaClientImpl(builder.build()).getStandings(1365L, 15L))
-                .isInstanceOf(FlaClientException.class)
-                .extracting("httpStatus", "code")
-                .containsExactly(HttpStatus.BAD_GATEWAY, "FLA_INVALID_RESPONSE");
-        server.verify();
+    void getStandingsMapsIoErrors() {
+        assertFailure(failingClient(new IOException("connection reset")),
+                HttpStatus.BAD_GATEWAY, "FLA_IO_ERROR");
     }
 
     @Test
-    void getStandingsMapsNullOrEmptyResponse() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("https://fla.test");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(once(), requestTo("https://fla.test/Home/GetClassement/136515"))
-                .andRespond(withSuccess("", MediaType.APPLICATION_JSON));
+    void configurationDefaultsRetainTimeoutsAndTtl() {
+        FlaProperties properties = new FlaProperties();
+        assertThat(properties.getBaseUrl()).isEqualTo("https://football-loisir-amateur.fr");
+        assertThat(properties.getConnectTimeout()).isEqualTo(Duration.ofSeconds(5));
+        assertThat(properties.getReadTimeout()).isEqualTo(Duration.ofSeconds(20));
+        assertThat(properties.getSnapshotTtl()).isEqualTo(Duration.ofHours(6));
+    }
 
-        assertThatThrownBy(() -> new FlaClientImpl(builder.build()).getStandings(1365L, 15L))
+    private FlaClient failingClient(IOException exception) {
+        RestClient restClient = RestClient.builder().baseUrl("https://fla.test")
+                .requestFactory((uri, method) -> { throw exception; }).build();
+        return new FlaClientImpl(restClient, new FlaStandingsHtmlParser());
+    }
+
+    private void assertFailure(FlaClient target, HttpStatus status, String code) {
+        assertThatThrownBy(() -> target.getStandings(16L, 2L))
                 .isInstanceOf(FlaClientException.class)
                 .extracting("httpStatus", "code")
-                .containsExactly(HttpStatus.BAD_GATEWAY, "FLA_EMPTY_RESPONSE");
-        server.verify();
+                .containsExactly(status, code);
     }
 }

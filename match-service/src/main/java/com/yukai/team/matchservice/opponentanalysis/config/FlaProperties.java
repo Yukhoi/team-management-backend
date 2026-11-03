@@ -16,7 +16,7 @@ import java.time.Duration;
 public class FlaProperties {
 
     @NotBlank
-    private String baseUrl = "https://www.football-loisir-amateur.com";
+    private String baseUrl = "https://football-loisir-amateur.fr";
 
     @NotNull
     private Duration connectTimeout = Duration.ofSeconds(5);

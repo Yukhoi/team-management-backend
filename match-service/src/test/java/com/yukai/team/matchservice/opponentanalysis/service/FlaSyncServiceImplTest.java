@@ -1,6 +1,7 @@
 package com.yukai.team.matchservice.opponentanalysis.service;
 
 import com.yukai.team.matchservice.opponentanalysis.client.FlaClient;
+import com.yukai.team.matchservice.opponentanalysis.parser.FlaStandingsHtmlParser;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaSyncResponse;
 import org.junit.jupiter.api.Test;
@@ -8,7 +9,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +25,21 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FlaSyncServiceImplTest {
+
+    @Test
+    void htmlStandingsRemainCompatibleWithSyncAndUseNewExternalIds() throws Exception {
+        String html = new ClassPathResource("fla/rankings-representative.html")
+                .getContentAsString(StandardCharsets.UTF_8);
+        var standings = new FlaStandingsHtmlParser()
+                .parse(html, 16L);
+        when(flaClient.getStandings(16L, 2L)).thenReturn(standings);
+        var expected = new FlaSyncResponse(16L, 2L, "Division test", 2, 2, 0, 0, OffsetDateTime.now());
+        when(flaCacheWriter.upsertStandings(16L, 2L, "Division test", standings)).thenReturn(expected);
+
+        assertThat(service.syncStandings(16L, 2L, "Division test")).isSameAs(expected);
+        assertThat(standings).extracting(FlaStandingEntryResponse::getTeamId).containsExactly(270L, 271L);
+        verify(flaCacheWriter).upsertStandings(16L, 2L, "Division test", standings);
+    }
 
     private static final Long CHAMPIONNAT_ID = 1365L;
     private static final Long SAISON_ID = 15L;

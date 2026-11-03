@@ -2,6 +2,7 @@ package com.yukai.team.matchservice.opponentanalysis.service;
 
 import com.yukai.team.matchservice.config.JacksonConfig;
 import com.yukai.team.matchservice.opponentanalysis.client.FlaClient;
+import com.yukai.team.matchservice.opponentanalysis.parser.FlaStandingsHtmlParser;
 import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse;
 import com.yukai.team.matchservice.opponentanalysis.entity.ExternalDataSnapshot;
@@ -11,9 +12,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -24,10 +27,46 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FlaStandingsSnapshotServiceImplTest {
+
+    @Test
+    void htmlStandingsAreStoredAsLegacyJsonAndCanBeReadFromFreshSnapshot() throws Exception {
+        String html = new ClassPathResource("fla/rankings-representative.html")
+                .getContentAsString(StandardCharsets.UTF_8);
+        var standings = new FlaStandingsHtmlParser()
+                .parse(html, 16L);
+        when(externalDataSnapshotRepository.findTopByProviderAndChampionnatIdAndSaisonIdOrderByFetchedAtDescIdDesc("FLA", 16L, 2L))
+                .thenReturn(Optional.empty());
+        when(flaClient.getStandings(16L, 2L)).thenReturn(standings);
+        var stored = new ExternalDataSnapshot();
+        stored.setId(12L);
+        when(externalDataSnapshotWriter.saveOrUpdateFetchedAt(eq("FLA"), eq(16L), eq(2L), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    stored.setPayloadHash(invocation.getArgument(3));
+                    stored.setRawPayload(invocation.getArgument(4));
+                    stored.setFetchedAt(invocation.getArgument(5));
+                    return new ExternalDataSnapshotWriter.SnapshotWriteResult(stored, false);
+                });
+
+        assertThat(service().getStandings(16L, 2L, false).cacheStatus()).isEqualTo(CacheStatus.MISS);
+        assertThat(stored.getRawPayload()).contains("\"IdEquipe\":270", "\"Bonus\":0", "\"CinqDernier\":[]")
+                .doesNotContain("<html", "teamId");
+        when(externalDataSnapshotRepository.findTopByProviderAndChampionnatIdAndSaisonIdOrderByFetchedAtDescIdDesc("FLA", 16L, 2L))
+                .thenReturn(Optional.of(stored));
+
+        var cached = service().getStandings(16L, 2L, false);
+        assertThat(cached.cacheStatus()).isEqualTo(CacheStatus.HIT);
+        assertThat(cached.standings()).hasSize(2);
+        assertThat(cached.standings().get(0).getTeamId()).isEqualTo(270L);
+        assertThat(cached.standings().get(0).getPoints()).isEqualTo(4);
+        assertThat(cached.standings().get(0).getBonus()).isZero();
+        assertThat(cached.standings().get(0).getForm()).isEmpty();
+        verify(flaClient, times(1)).getStandings(16L, 2L);
+    }
 
     @Mock
     private ExternalDataSnapshotRepository externalDataSnapshotRepository;

@@ -47,7 +47,7 @@ app:
 
 opponent-analysis:
   fla:
-    base-url: ${FLA_BASE_URL:https://www.football-loisir-amateur.com}
+    base-url: ${FLA_BASE_URL:https://football-loisir-amateur.fr}
     connect-timeout: 5s
     read-timeout: 20s
     snapshot-ttl: ${FLA_SNAPSHOT_TTL:6h}
