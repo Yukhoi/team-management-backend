@@ -5,6 +5,7 @@ import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
 import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.MatchOpponentMetricsResponse;
 import com.yukai.team.matchservice.opponentanalysis.dto.TeamPerformanceMetrics;
+import com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics;
 import com.yukai.team.matchservice.opponentanalysis.entity.FlaTeamMapping;
 import com.yukai.team.matchservice.opponentanalysis.exception.OpponentAnalysisConflictException;
 import com.yukai.team.matchservice.opponentanalysis.repository.FlaTeamMappingRepository;
@@ -28,19 +29,22 @@ public class MatchOpponentMetricsServiceImpl implements MatchOpponentMetricsServ
     private final FlaStandingsSnapshotService flaStandingsSnapshotService;
     private final OpponentMetricsCalculator opponentMetricsCalculator;
     private final FlaProperties flaProperties;
+    private final FlaRecentFormService recentFormService;
 
     public MatchOpponentMetricsServiceImpl(
             MatchInfoRepository matchInfoRepository,
             FlaTeamMappingRepository flaTeamMappingRepository,
             FlaStandingsSnapshotService flaStandingsSnapshotService,
             OpponentMetricsCalculator opponentMetricsCalculator,
-            FlaProperties flaProperties
+            FlaProperties flaProperties,
+            FlaRecentFormService recentFormService
     ) {
         this.matchInfoRepository = matchInfoRepository;
         this.flaTeamMappingRepository = flaTeamMappingRepository;
         this.flaStandingsSnapshotService = flaStandingsSnapshotService;
         this.opponentMetricsCalculator = opponentMetricsCalculator;
         this.flaProperties = flaProperties;
+        this.recentFormService = recentFormService;
     }
 
     @Override
@@ -82,18 +86,25 @@ public class MatchOpponentMetricsServiceImpl implements MatchOpponentMetricsServ
                 opponentMapping.getFlaTeamId(),
                 "FLA standings do not contain opponent mapped team"
         );
+        Map<Long, RecentFormMetrics> recentByTeam = new java.util.HashMap<>();
+        RecentFormMetrics ourRecent = recentByTeam.computeIfAbsent(ourMapping.getFlaTeamId(),
+                id -> recentFormService.getForm(ourMapping, match.getMatchTime(), forceRefresh));
+        RecentFormMetrics opponentRecent = recentByTeam.computeIfAbsent(opponentMapping.getFlaTeamId(),
+                id -> recentFormService.getForm(opponentMapping, match.getMatchTime(), forceRefresh));
         Map<Long, Integer> ranks = opponentMetricsCalculator.calculateRanks(standings);
         TeamPerformanceMetrics ourMetrics = opponentMetricsCalculator.calculateTeamMetrics(
                 match.getOurTeamId(),
                 ourMapping.getFlaTeamId(),
                 ourEntry,
-                ranks.get(ourMapping.getFlaTeamId())
+                ranks.get(ourMapping.getFlaTeamId()),
+                ourRecent
         );
         TeamPerformanceMetrics opponentMetrics = opponentMetricsCalculator.calculateTeamMetrics(
                 match.getOpponentTeamId(),
                 opponentMapping.getFlaTeamId(),
                 opponentEntry,
-                ranks.get(opponentMapping.getFlaTeamId())
+                ranks.get(opponentMapping.getFlaTeamId()),
+                opponentRecent
         );
 
         return new MatchOpponentMetricsResponse(

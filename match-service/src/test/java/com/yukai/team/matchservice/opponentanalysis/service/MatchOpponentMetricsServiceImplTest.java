@@ -37,6 +37,17 @@ class MatchOpponentMetricsServiceImplTest {
     @Mock
     private FlaStandingsSnapshotService flaStandingsSnapshotService;
 
+    @Mock
+    private FlaRecentFormService recentFormService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void recentSourceIsExplicitlyUnavailableByDefault() {
+        org.mockito.Mockito.lenient().when(recentFormService.getForm(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.unavailable(
+                        com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Status.SOURCE_UNAVAILABLE, null));
+    }
+
     @Test
     void returnsMetrics() {
         MatchInfo match = match();
@@ -71,6 +82,10 @@ class MatchOpponentMetricsServiceImplTest {
         assertThat(response.dataSource().forceRefreshRequested()).isFalse();
         assertThat(response.dataSource().formOrder()).isEqualTo("LATEST_TO_OLDEST");
         assertThat(response.dataSource().rankingType()).isEqualTo("CALCULATED");
+        assertThat(response.ourTeam().recentFive()).isEmpty();
+        assertThat(response.ourTeam().recentFiveWins()).isNull();
+        assertThat(response.ourTeam().recentFormAvailable()).isFalse();
+        assertThat(response.comparison().recentFiveWinsDifference()).isNull();
     }
 
     @Test
@@ -86,6 +101,8 @@ class MatchOpponentMetricsServiceImplTest {
 
         assertThat(response.dataSource().forceRefreshRequested()).isTrue();
         verify(flaStandingsSnapshotService).getStandings(1365L, 15L, true);
+        verify(recentFormService, org.mockito.Mockito.times(2)).getForm(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(true));
     }
 
     @Test
@@ -190,6 +207,109 @@ class MatchOpponentMetricsServiceImplTest {
                 .hasMessage("FLA service unavailable");
     }
 
+    @Test
+    void mergesOfficialFixtureMatchesAndComparesBothTeams() throws java.io.IOException {
+        fixtureMappings();
+        var calculator = new RecentFormCalculator();
+        var ourForm = calculator.calculate(270L, RecentFormCalculatorTest.fixture(270),
+                RecentFormCalculatorTest.TARGET, new com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Source(
+                        270L, null, "a", "a", RecentFormCalculatorTest.FETCHED, CacheStatus.HIT, 21600, false, null));
+        var theirForm = calculator.calculate(63L, RecentFormCalculatorTest.fixture(63),
+                RecentFormCalculatorTest.TARGET, new com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Source(
+                        63L, null, "b", "b", RecentFormCalculatorTest.FETCHED, CacheStatus.MISS, 21600, false, null));
+        when(recentFormService.getForm(org.mockito.ArgumentMatchers.argThat(m -> m != null && m.getFlaTeamId().equals(270L)),
+                org.mockito.ArgumentMatchers.eq(RecentFormCalculatorTest.TARGET), org.mockito.ArgumentMatchers.eq(false))).thenReturn(ourForm);
+        when(recentFormService.getForm(org.mockito.ArgumentMatchers.argThat(m -> m != null && m.getFlaTeamId().equals(63L)),
+                org.mockito.ArgumentMatchers.eq(RecentFormCalculatorTest.TARGET), org.mockito.ArgumentMatchers.eq(false))).thenReturn(theirForm);
+        var result = service().getMetrics(42L);
+        assertThat(result.ourTeam().recentFive()).containsExactly("lost", "won", "won", "won", "won");
+        assertThat(result.opponent().recentFive()).containsExactly("won", "won", "draw", "lost", "lost");
+        assertThat(result.opponent().recentFormSampleSize()).isEqualTo(7);
+        assertThat(result.comparison().recentFiveWinsDifference()).isEqualTo(2);
+        assertThat(result.ourTeam().recentForm().source().cacheStatus()).isEqualTo(CacheStatus.HIT);
+    }
+
+    @Test
+    void realPagesDoNotConsumeLaterDataForHistoricalTarget() throws java.io.IOException {
+        fixtureMappings();
+        when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match()));
+        FlaTeamMatchesSnapshotService snapshots = org.mockito.Mockito.mock(FlaTeamMatchesSnapshotService.class);
+        for (long id : new long[]{270, 63}) {
+            var page = new com.yukai.team.matchservice.opponentanalysis.parser.FlaTeamMatchesHtmlParser().parsePage(
+                    new org.springframework.core.io.ClassPathResource("fla/team-" + id + ".html")
+                            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8), id);
+            when(snapshots.getTeamMatches(id, false)).thenReturn(new FlaTeamMatchesSnapshotService.Result(
+                    page, "version-" + id, RecentFormCalculatorTest.FETCHED, CacheStatus.HIT, 21600, false));
+        }
+        var realRecentService = new FlaRecentFormService(snapshots, new RecentFormCalculator(), flaProperties());
+        var result = new MatchOpponentMetricsServiceImpl(matchInfoRepository, flaTeamMappingRepository,
+                flaStandingsSnapshotService, new OpponentMetricsCalculator(), flaProperties(), realRecentService).getMetrics(42L);
+        assertThat(result.ourTeam().recentForm().status()).isEqualTo(
+                com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Status.NO_COMPLETED_MATCHES);
+        assertThat(result.ourTeam().recentFormSampleSize()).isZero();
+        assertThat(result.ourTeam().recentFive()).isEmpty();
+        assertThat(result.ourTeam().recentFiveWins()).isNull();
+        assertThat(result.opponent().currentWinningStreak()).isNull();
+        assertThat(result.comparison().recentFiveWinsDifference()).isNull();
+        assertThat(result.ourTeam().points()).isEqualTo(24);
+        assertThat(result.dataSource().snapshotId()).isEqualTo(10L);
+        assertThat(result.dataSource().standingsTemporalScope()).isEqualTo("FETCH_TIME_SNAPSHOT_NOT_HISTORICAL_PREMATCH");
+        var futureTarget = match();
+        futureTarget.setMatchTime(RecentFormCalculatorTest.TARGET);
+        when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(futureTarget));
+        var future = new MatchOpponentMetricsServiceImpl(matchInfoRepository, flaTeamMappingRepository,
+                flaStandingsSnapshotService, new OpponentMetricsCalculator(), flaProperties(), realRecentService).getMetrics(42L);
+        assertThat(future.ourTeam().recentFive()).containsExactly("lost", "won", "won", "won", "won");
+        assertThat(future.opponent().recentFive()).containsExactly("won", "won", "draw", "lost", "lost");
+        assertThat(future.ourTeam().recentFormAvailable()).isTrue();
+        assertThat(future.opponent().recentFormAvailable()).isTrue();
+        assertThat(future.comparison().recentFiveWinsDifference()).isEqualTo(2);
+        assertThat(future.dataSource()).isEqualTo(result.dataSource());
+        assertThat(future.ourTeam().points()).isEqualTo(result.ourTeam().points());
+    }
+
+    @Test
+    void oneUnavailableSideKeepsStandingsAndMakesRecentComparisonUnavailable() throws java.io.IOException {
+        fixtureMappings();
+        var available = new RecentFormCalculator().calculate(270L, RecentFormCalculatorTest.fixture(270),
+                RecentFormCalculatorTest.TARGET,
+                new com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Source(270L, null,
+                        "a", "a", RecentFormCalculatorTest.FETCHED, CacheStatus.HIT, 21600, false, null));
+        when(recentFormService.getForm(org.mockito.ArgumentMatchers.argThat(m -> m != null && m.getFlaTeamId().equals(270L)),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(false))).thenReturn(available);
+        var result = service().getMetrics(42L);
+        assertThat(result.ourTeam().recentFormAvailable()).isTrue();
+        assertThat(result.opponent().recentFormAvailable()).isFalse();
+        assertThat(result.opponent().recentFiveWins()).isNull();
+        assertThat(result.comparison().recentFiveWinsDifference()).isNull();
+        assertThat(result.comparison().pointsDifference()).isNotNull();
+    }
+
+    @Test
+    void sameTeamIsResolvedOnlyOncePerMetricsRequest() {
+        commonMappings();
+        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 13L))
+                .thenReturn(Optional.of(mapping(13L, 6580L, 1365L, 15L)));
+        when(flaStandingsSnapshotService.getStandings(1365L, 15L, false))
+                .thenReturn(snapshotResult(entry(6580L, "Both", 20, 6, 2, 2, 30, 10)));
+        service().getMetrics(42L);
+        verify(recentFormService, org.mockito.Mockito.times(1)).getForm(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(false));
+    }
+
+    private void fixtureMappings() {
+        var target = match();
+        target.setMatchTime(RecentFormCalculatorTest.TARGET);
+        when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(target));
+        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L))
+                .thenReturn(Optional.of(mapping(12L, 270L, 16L, 2L)));
+        when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 13L))
+                .thenReturn(Optional.of(mapping(13L, 63L, 16L, 2L)));
+        when(flaStandingsSnapshotService.getStandings(16L, 2L, false))
+                .thenReturn(snapshotResult(entry(270L, "YEXIAO PARIS FC", 24, 5, 0, 1, 31, 9),
+                        entry(63L, "18 EMPIRE", 16, 2, 1, 1, 11, 11)));
+    }
+
     private void commonMappings() {
         when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match()));
         when(flaTeamMappingRepository.findByInternalTournamentIdAndInternalTeamId(5L, 12L))
@@ -204,7 +324,8 @@ class MatchOpponentMetricsServiceImplTest {
                 flaTeamMappingRepository,
                 flaStandingsSnapshotService,
                 new OpponentMetricsCalculator(),
-                flaProperties()
+                flaProperties(),
+                recentFormService
         );
     }
 

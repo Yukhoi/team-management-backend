@@ -20,11 +20,16 @@ public record TeamComparisonMetrics(
         BigDecimal goalsAgainstPerGameDifference,
         @Schema(description = "Our goal difference minus opponent goal difference", example = "-143")
         Integer goalDifferenceDifference,
-        @Schema(description = "Our recent five wins minus opponent recent five wins", example = "-2")
+        @Schema(description = "Our recent five wins minus opponent recent five wins; null if either sample unavailable", example = "-2", nullable = true)
         Integer recentFiveWinsDifference,
         @Schema(description = "Opponent attack strength against our defensive concession rate", example = "0.88")
         BigDecimal opponentAttackVsOurDefenseGap,
         @Schema(description = "Our attack strength against opponent defensive concession rate", example = "-0.84")
         BigDecimal ourAttackVsOpponentDefenseGap
 ) {
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @Schema(description = "Whether the recent five wins difference is meaningful")
+    public boolean recentFormComparisonAvailable() {
+        return recentFiveWinsDifference != null;
+    }
 }

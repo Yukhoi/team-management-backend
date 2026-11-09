@@ -4,6 +4,7 @@ import com.yukai.team.matchservice.opponentanalysis.config.FlaProperties;
 import com.yukai.team.matchservice.opponentanalysis.config.FlaClientConfig;
 import com.yukai.team.matchservice.opponentanalysis.exception.FlaClientException;
 import com.yukai.team.matchservice.opponentanalysis.parser.FlaStandingsHtmlParser;
+import com.yukai.team.matchservice.opponentanalysis.parser.FlaTeamMatchesHtmlParser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -38,7 +39,7 @@ class FlaClientImplTest {
     void setUp() {
         RestClient.Builder builder = new FlaClientConfig().flaRestClient(new FlaProperties()).mutate();
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new FlaClientImpl(builder.build(), new FlaStandingsHtmlParser());
+        client = new FlaClientImpl(builder.build(), new FlaStandingsHtmlParser(), new FlaTeamMatchesHtmlParser());
     }
 
     @Test
@@ -117,7 +118,7 @@ class FlaClientImplTest {
     private FlaClient failingClient(IOException exception) {
         RestClient restClient = RestClient.builder().baseUrl("https://fla.test")
                 .requestFactory((uri, method) -> { throw exception; }).build();
-        return new FlaClientImpl(restClient, new FlaStandingsHtmlParser());
+        return new FlaClientImpl(restClient, new FlaStandingsHtmlParser(), new FlaTeamMatchesHtmlParser());
     }
 
     private void assertFailure(FlaClient target, HttpStatus status, String code) {

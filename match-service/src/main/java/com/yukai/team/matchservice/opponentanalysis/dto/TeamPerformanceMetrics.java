@@ -47,33 +47,85 @@ public record TeamPerformanceMetrics(
         Integer bonus,
         @Schema(description = "FLA forfeits", example = "0")
         Integer forfeits,
-        @Schema(description = "Recent five match results from latest to oldest", example = "[\"won\",\"lost\",\"lost\",\"won\",\"draw\"]")
+        @Schema(description = "Recent five match results from latest to oldest; empty if unavailable (see recentForm)", example = "[\"won\",\"lost\",\"lost\",\"won\",\"draw\"]")
         List<String> recentFive,
-        @Schema(description = "Recent ten match results from latest to oldest", example = "[\"won\",\"lost\",\"lost\",\"won\",\"draw\"]")
+        @Schema(description = "Recent ten match results from latest to oldest; empty if unavailable (see recentForm)", example = "[\"won\",\"lost\",\"lost\",\"won\",\"draw\"]")
         List<String> recentTen,
-        @Schema(description = "Current winning streak", example = "1")
+        @Schema(description = "Current winning streak; null if recent form unavailable", example = "1", nullable = true)
         Integer currentWinningStreak,
-        @Schema(description = "Current drawing streak", example = "0")
+        @Schema(description = "Current drawing streak; null if recent form unavailable", example = "0", nullable = true)
         Integer currentDrawingStreak,
-        @Schema(description = "Current losing streak", example = "0")
+        @Schema(description = "Current losing streak; null if recent form unavailable", example = "0", nullable = true)
         Integer currentLosingStreak,
-        @Schema(description = "Current unbeaten streak", example = "1")
+        @Schema(description = "Current unbeaten streak; null if recent form unavailable", example = "1", nullable = true)
         Integer currentUnbeatenStreak,
-        @Schema(description = "Longest winning streak in available data", example = "2")
+        @Schema(description = "Longest winning streak in available data; null if recent form unavailable", example = "2", nullable = true)
         Integer longestWinningStreak,
-        @Schema(description = "Longest losing streak in available data", example = "4")
+        @Schema(description = "Longest losing streak in available data; null if recent form unavailable", example = "4", nullable = true)
         Integer longestLosingStreak,
-        @Schema(description = "Wins in recent five matches", example = "2")
+        @Schema(description = "Wins in recent five matches; null if recent form unavailable", example = "2", nullable = true)
         Integer recentFiveWins,
-        @Schema(description = "Draws in recent five matches", example = "1")
+        @Schema(description = "Draws in recent five matches; null if recent form unavailable", example = "1", nullable = true)
         Integer recentFiveDraws,
-        @Schema(description = "Losses in recent five matches", example = "2")
+        @Schema(description = "Losses in recent five matches; null if recent form unavailable", example = "2", nullable = true)
         Integer recentFiveLosses,
-        @Schema(description = "Wins in recent ten matches", example = "2")
+        @Schema(description = "Wins in recent ten matches; null if recent form unavailable", example = "2", nullable = true)
         Integer recentTenWins,
-        @Schema(description = "Draws in recent ten matches", example = "1")
+        @Schema(description = "Draws in recent ten matches; null if recent form unavailable", example = "1", nullable = true)
         Integer recentTenDraws,
-        @Schema(description = "Losses in recent ten matches", example = "2")
-        Integer recentTenLosses
+        @Schema(description = "Losses in recent ten matches; null if recent form unavailable", example = "2", nullable = true)
+        Integer recentTenLosses,
+        @Schema(description = "Independent official-match recent form, availability and source; null for legacy stored reports")
+        RecentFormMetrics recentForm
 ) {
+    /** Source compatibility for existing callers and legacy test fixtures. */
+    public TeamPerformanceMetrics(
+            Long internalTeamId,
+            Long flaTeamId,
+            String teamName,
+            Integer calculatedRank,
+            Integer points,
+            Integer played,
+            Integer wins,
+            Integer draws,
+            Integer losses,
+            BigDecimal winRate,
+            BigDecimal drawRate,
+            BigDecimal lossRate,
+            BigDecimal pointsPerGame,
+            Integer goalsFor,
+            Integer goalsAgainst,
+            Integer goalDifference,
+            BigDecimal goalsForPerGame,
+            BigDecimal goalsAgainstPerGame,
+            Integer bonus,
+            Integer forfeits,
+            List<String> recentFive,
+            List<String> recentTen,
+            Integer currentWinningStreak,
+            Integer currentDrawingStreak,
+            Integer currentLosingStreak,
+            Integer currentUnbeatenStreak,
+            Integer longestWinningStreak,
+            Integer longestLosingStreak,
+            Integer recentFiveWins,
+            Integer recentFiveDraws,
+            Integer recentFiveLosses,
+            Integer recentTenWins,
+            Integer recentTenDraws,
+            Integer recentTenLosses) {
+        this(internalTeamId, flaTeamId, teamName, calculatedRank, points, played, wins, draws, losses, winRate, drawRate, lossRate, pointsPerGame, goalsFor, goalsAgainst, goalDifference, goalsForPerGame, goalsAgainstPerGame, bonus, forfeits, recentFive, recentTen, currentWinningStreak, currentDrawingStreak, currentLosingStreak, currentUnbeatenStreak, longestWinningStreak, longestLosingStreak, recentFiveWins, recentFiveDraws, recentFiveLosses, recentTenWins, recentTenDraws, recentTenLosses, null);
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @Schema(description = "True for a nonempty eligible completed LEAGUE/CUP sample")
+    public boolean recentFormAvailable() {
+        return recentForm != null && recentForm.available();
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @Schema(description = "Actual eligible sample size; null when source or cutoff is unavailable", nullable = true)
+    public Integer recentFormSampleSize() {
+        return recentForm == null ? null : recentForm.sampleSize();
+    }
 }

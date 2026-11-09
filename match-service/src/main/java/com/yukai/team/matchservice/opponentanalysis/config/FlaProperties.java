@@ -26,4 +26,7 @@ public class FlaProperties {
 
     @NotNull
     private Duration snapshotTtl = Duration.ofHours(6);
+
+    @NotNull
+    private Duration recentMatchesTtl = Duration.ofHours(6);
 }

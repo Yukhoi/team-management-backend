@@ -4,6 +4,7 @@ import com.yukai.team.matchservice.opponentanalysis.dto.FlaStandingEntryResponse
 import com.yukai.team.matchservice.opponentanalysis.dto.LeaguePerformanceMetrics;
 import com.yukai.team.matchservice.opponentanalysis.dto.TeamComparisonMetrics;
 import com.yukai.team.matchservice.opponentanalysis.dto.TeamPerformanceMetrics;
+import com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -29,6 +30,12 @@ public class OpponentMetricsCalculator {
             FlaStandingEntryResponse entry,
             Integer calculatedRank
     ) {
+        return calculateTeamMetrics(internalTeamId, flaTeamId, entry, calculatedRank, null);
+    }
+
+    public TeamPerformanceMetrics calculateTeamMetrics(Long internalTeamId, Long flaTeamId,
+                                                       FlaStandingEntryResponse entry, Integer calculatedRank,
+                                                       RecentFormMetrics recentForm) {
         if (entry == null) {
             entry = new FlaStandingEntryResponse();
             entry.setTeamId(flaTeamId);
@@ -41,7 +48,9 @@ public class OpponentMetricsCalculator {
         int goalsFor = value(entry.getGoalsFor());
         int goalsAgainst = value(entry.getGoalsAgainst());
         int goalDifference = goalsFor - goalsAgainst;
-        List<String> form = normalizeForm(entry.getForm());
+        boolean formAvailable = recentForm == null || recentForm.available();
+        List<String> form = recentForm == null ? normalizeForm(entry.getForm())
+                : recentForm.available() ? recentForm.results() : List.of();
         List<String> recentFive = form.stream().limit(5).toList();
         List<String> recentTen = form.stream().limit(10).toList();
 
@@ -68,18 +77,19 @@ public class OpponentMetricsCalculator {
                 value(entry.getForfeits()),
                 recentFive,
                 recentTen,
-                currentStreak(form, WON),
-                currentStreak(form, DRAW),
-                currentStreak(form, LOST),
-                currentUnbeatenStreak(form),
-                longestStreak(form, WON),
-                longestStreak(form, LOST),
-                count(recentFive, WON),
-                count(recentFive, DRAW),
-                count(recentFive, LOST),
-                count(recentTen, WON),
-                count(recentTen, DRAW),
-                count(recentTen, LOST)
+                formAvailable ? currentStreak(form, WON) : null,
+                formAvailable ? currentStreak(form, DRAW) : null,
+                formAvailable ? currentStreak(form, LOST) : null,
+                formAvailable ? currentUnbeatenStreak(form) : null,
+                formAvailable ? longestStreak(form, WON) : null,
+                formAvailable ? longestStreak(form, LOST) : null,
+                formAvailable ? count(recentFive, WON) : null,
+                formAvailable ? count(recentFive, DRAW) : null,
+                formAvailable ? count(recentFive, LOST) : null,
+                formAvailable ? count(recentTen, WON) : null,
+                formAvailable ? count(recentTen, DRAW) : null,
+                formAvailable ? count(recentTen, LOST) : null,
+                recentForm
         );
     }
 
@@ -115,7 +125,8 @@ public class OpponentMetricsCalculator {
                 ourTeam.goalsForPerGame().subtract(opponent.goalsForPerGame()).setScale(2, RoundingMode.HALF_UP),
                 ourTeam.goalsAgainstPerGame().subtract(opponent.goalsAgainstPerGame()).setScale(2, RoundingMode.HALF_UP),
                 ourTeam.goalDifference() - opponent.goalDifference(),
-                ourTeam.recentFiveWins() - opponent.recentFiveWins(),
+                ourTeam.recentFiveWins() == null || opponent.recentFiveWins() == null ? null
+                        : ourTeam.recentFiveWins() - opponent.recentFiveWins(),
                 opponent.goalsForPerGame().subtract(ourTeam.goalsAgainstPerGame()).setScale(2, RoundingMode.HALF_UP),
                 ourTeam.goalsForPerGame().subtract(opponent.goalsAgainstPerGame()).setScale(2, RoundingMode.HALF_UP)
         );

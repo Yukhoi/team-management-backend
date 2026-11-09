@@ -51,6 +51,7 @@ opponent-analysis:
     connect-timeout: 5s
     read-timeout: 20s
     snapshot-ttl: ${FLA_SNAPSHOT_TTL:6h}
+    recent-matches-ttl: ${FLA_RECENT_MATCHES_TTL:6h}
   ai:
     provider: openrouter
     base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}

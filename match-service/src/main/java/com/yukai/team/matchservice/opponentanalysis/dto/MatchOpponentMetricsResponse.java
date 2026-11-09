@@ -75,5 +75,16 @@ public record MatchOpponentMetricsResponse(
             @Schema(description = "Ranking type", example = "CALCULATED")
             String rankingType
     ) {
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        @Schema(description = "Standings are observed at fetchedAt, not replayed at target kickoff")
+        public String standingsTemporalScope() {
+            return "FETCH_TIME_SNAPSHOT_NOT_HISTORICAL_PREMATCH";
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        @Schema(description = "Existing AI report reuse does not yet include recent source versions; integration blocker")
+        public String reportCacheCompatibility() {
+            return "REQUIRES_COMPOSITE_SOURCE_KEY";
+        }
     }
 }
