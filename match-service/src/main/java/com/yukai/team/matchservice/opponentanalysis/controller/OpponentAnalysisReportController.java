@@ -102,7 +102,7 @@ public class OpponentAnalysisReportController {
     @PostMapping("/matches/{matchId}/opponent-analysis")
     @Operation(
             summary = "Generate opponent analysis report",
-            description = "根据比赛生成 AI 对手分析。使用 FLA 公共积分榜作为数据来源，使用 OpenRouter 生成中文结构化报告。默认 forceRefresh=false，允许复用相同 matchId、snapshotId、provider、model、promptVersion 和 language 下已有的 COMPLETED 报告；forceRefresh=true 会刷新 FLA 数据并强制重新生成。Requires ADMIN or COACH."
+            description = "根据比赛生成 AI 对手分析。使用 FLA 公共积分榜和近期正式比赛统计作为数据来源，使用 OpenRouter 生成中文结构化报告。默认 forceRefresh=false，允许复用相同 matchId、metricsInputFingerprint、provider、model、promptVersion 和 language 下已有的 COMPLETED 报告；forceRefresh=true 会刷新 FLA 数据并强制重新生成。Requires ADMIN or COACH."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Generated or reused opponent analysis report", content = @Content(schema = @Schema(implementation = OpponentAnalysisReportResponse.class), examples = @ExampleObject(name = "completed", value = REPORT_EXAMPLE))),

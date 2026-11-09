@@ -67,12 +67,15 @@ public class OpponentAnalysisApplicationServiceImpl implements OpponentAnalysisA
             throw new OpponentAnalysisConflictException("FLA snapshotId is required to generate opponent analysis report");
         }
 
+        OpponentAnalysisInput input = inputMapper.toInput(metrics);
+        String fingerprint = new MetricsInputFingerprint(objectMapper).fingerprint(input);
+
         String provider = aiProperties.getProvider();
         String model = aiProperties.getModel();
         String promptVersion = aiProperties.getPromptVersion();
 
         if (!forceRefresh) {
-            var reusable = findReusable(matchId, snapshotId, provider, model, promptVersion);
+            var reusable = findReusable(matchId, fingerprint, provider, model, promptVersion);
             if (reusable.isPresent()) {
                 return toResponse(reusable.get(), true);
             }
@@ -88,11 +91,12 @@ public class OpponentAnalysisApplicationServiceImpl implements OpponentAnalysisA
                 promptVersion,
                 LANGUAGE,
                 metricsJson,
+                fingerprint,
+                writeJson(input, "AI input"),
                 metrics.dataSource().fetchedAt()
         );
 
         try {
-            OpponentAnalysisInput input = inputMapper.toInput(metrics);
             OpponentReportGenerationResult generated = reportGenerator.generateWithMetadata(input);
             String reportJson = writeJson(generated.report(), "AI report");
 
@@ -154,14 +158,14 @@ public class OpponentAnalysisApplicationServiceImpl implements OpponentAnalysisA
 
     private java.util.Optional<OpponentAnalysisReport> findReusable(
             Long matchId,
-            Long snapshotId,
+            String fingerprint,
             String provider,
             String model,
             String promptVersion
     ) {
-        return reportRepository.findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(
+        return reportRepository.findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(
                 matchId,
-                snapshotId,
+                fingerprint,
                 provider,
                 model,
                 promptVersion,

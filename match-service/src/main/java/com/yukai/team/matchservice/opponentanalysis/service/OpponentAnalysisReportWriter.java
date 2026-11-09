@@ -15,6 +15,8 @@ public interface OpponentAnalysisReportWriter {
             String promptVersion,
             String language,
             String metricsJson,
+            String metricsInputFingerprint,
+            String aiInputJson,
             OffsetDateTime sourceFetchedAt
     );
 

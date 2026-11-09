@@ -18,9 +18,9 @@ public interface OpponentAnalysisReportRepository extends JpaRepository<Opponent
 
     List<OpponentAnalysisReport> findByMatchIdOrderByCreatedAtDescIdDesc(Long matchId);
 
-    Optional<OpponentAnalysisReport> findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(
+    Optional<OpponentAnalysisReport> findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(
             Long matchId,
-            Long snapshotId,
+            String metricsInputFingerprint,
             String provider,
             String model,
             String promptVersion,

@@ -200,7 +200,10 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
 
     private GeneratedOpponentReport parseReport(String content) {
         try {
-            return objectMapper.readValue(content, GeneratedOpponentReport.class);
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.reader()
+                    .with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(content);
+            validateOutputStructure(root);
+            return objectMapper.treeToValue(root, GeneratedOpponentReport.class);
         } catch (JsonProcessingException exception) {
             log.warn(
                     "OpenRouter returned invalid report JSON, exceptionClass={}, exceptionMessage={}, normalizedContentLength={}, normalizedContentPrefix={}, normalizedContentSuffix={}",
@@ -216,6 +219,50 @@ public class OpenRouterOpponentReportGenerator implements OpponentReportGenerato
                     "OpenRouter returned invalid report JSON",
                     exception
             );
+        }
+    }
+
+    private void validateOutputStructure(com.fasterxml.jackson.databind.JsonNode root) {
+        if (root == null || !root.isObject()) {
+            invalidReport("AI report must be a JSON object");
+        }
+        requireText(root, "threatLevel");
+        requireText(root, "summary");
+        for (String field : List.of("comparison", "strengths", "weaknesses", "recommendations", "dataLimitations")) {
+            if (!root.path(field).isArray()) {
+                invalidReport("AI report " + field + " must be an array");
+            }
+        }
+        for (var item : root.path("comparison")) {
+            for (String field : List.of("metric", "ourValue", "opponentValue", "analysis")) {
+                requireText(item, field);
+            }
+        }
+        for (String field : List.of("strengths", "weaknesses")) {
+            for (var item : root.path(field)) {
+                requireText(item, "title");
+                requireText(item, "analysis");
+                if (!item.path("evidence").isArray() || item.path("evidence").isEmpty()) {
+                    invalidReport("AI report findings require evidence");
+                }
+                validateTextArray(item.path("evidence"));
+            }
+        }
+        validateTextArray(root.path("recommendations"));
+        validateTextArray(root.path("dataLimitations"));
+    }
+
+    private void requireText(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        if (!node.path(field).isTextual() || node.path(field).asText().isBlank()) {
+            invalidReport("AI report " + field + " must be nonempty text");
+        }
+    }
+
+    private void validateTextArray(com.fasterxml.jackson.databind.JsonNode array) {
+        for (var item : array) {
+            if (!item.isTextual() || item.asText().isBlank()) {
+                invalidReport("AI report arrays require nonempty text");
+            }
         }
     }
 

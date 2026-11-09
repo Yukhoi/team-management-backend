@@ -30,6 +30,8 @@ public class OpponentAnalysisReportWriterImpl implements OpponentAnalysisReportW
             String promptVersion,
             String language,
             String metricsJson,
+            String metricsInputFingerprint,
+            String aiInputJson,
             OffsetDateTime sourceFetchedAt
     ) {
         OpponentAnalysisReport report = new OpponentAnalysisReport();
@@ -42,6 +44,8 @@ public class OpponentAnalysisReportWriterImpl implements OpponentAnalysisReportW
         report.setLanguage(language);
         report.setStatus(OpponentAnalysisStatus.PENDING);
         report.setMetricsJson(metricsJson);
+        report.setMetricsInputFingerprint(metricsInputFingerprint);
+        report.setAiInputJson(aiInputJson);
         report.setSourceFetchedAt(sourceFetchedAt);
         return repository.saveAndFlush(report);
     }

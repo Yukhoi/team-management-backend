@@ -35,6 +35,12 @@ public class OpponentAnalysisReport {
     @Column(name = "snapshot_id", nullable = false)
     private Long snapshotId;
 
+    @Column(name = "metrics_input_fingerprint", length = 64)
+    private String metricsInputFingerprint;
+
+    @Column(name = "ai_input_json", columnDefinition = "TEXT")
+    private String aiInputJson;
+
     @Column(name = "provider", nullable = false, length = 50)
     private String provider;
 

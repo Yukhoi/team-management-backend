@@ -82,9 +82,9 @@ public record MatchOpponentMetricsResponse(
         }
 
         @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-        @Schema(description = "Existing AI report reuse does not yet include recent source versions; integration blocker")
+        @Schema(description = "AI report reuse uses canonical AI input including recent source versions")
         public String reportCacheCompatibility() {
-            return "REQUIRES_COMPOSITE_SOURCE_KEY";
+            return "METRICS_INPUT_FINGERPRINT";
         }
     }
 }

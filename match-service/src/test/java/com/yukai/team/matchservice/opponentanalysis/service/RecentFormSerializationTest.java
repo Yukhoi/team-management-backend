@@ -43,11 +43,11 @@ class RecentFormSerializationTest {
     }
 
     @Test
-    void standingsTimeScopeAndReportCacheLimitationSurviveSavedMetricsRoundTrip() throws Exception {
+    void standingsTimeScopeAndFingerprintCachePolicySurviveSavedMetricsRoundTrip() throws Exception {
         var source = new MatchOpponentMetricsResponse.DataSource("FLA", 16L, 2L, 1L, "h",
                 RecentFormCalculatorTest.FETCHED, CacheStatus.HIT, 21600L, false, "LATEST_TO_OLDEST", "CALCULATED");
         assertThat(source.standingsTemporalScope()).isEqualTo("FETCH_TIME_SNAPSHOT_NOT_HISTORICAL_PREMATCH");
-        assertThat(source.reportCacheCompatibility()).isEqualTo("REQUIRES_COMPOSITE_SOURCE_KEY");
+        assertThat(source.reportCacheCompatibility()).isEqualTo("METRICS_INPUT_FINGERPRINT");
         assertThat(mapper.readValue(mapper.writeValueAsString(source), MatchOpponentMetricsResponse.DataSource.class)).isEqualTo(source);
     }
 

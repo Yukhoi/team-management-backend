@@ -75,9 +75,9 @@ class OpponentAnalysisApplicationServiceImplTest {
     void generatesAndCompletesReport() {
         when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match(MatchStatus.SCHEDULED)));
         when(metricsService.getMetrics(42L, false)).thenReturn(metrics(10L));
-        when(reportRepository.findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(42L, 10L, "openrouter", "test-model", "v1", "zh-CN", OpponentAnalysisStatus.COMPLETED))
+        when(reportRepository.findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(42L, fingerprint(metrics(10L)), "openrouter", "test-model", "v1", "zh-CN", OpponentAnalysisStatus.COMPLETED))
                 .thenReturn(Optional.empty());
-        when(reportWriter.createPending(eq(42L), eq(13L), eq(10L), eq("openrouter"), eq("test-model"), eq("v1"), eq("zh-CN"), any(), any()))
+        when(reportWriter.createPending(eq(42L), eq(13L), eq(10L), eq("openrouter"), eq("test-model"), eq("v1"), eq("zh-CN"), any(), any(), any(), any()))
                 .thenReturn(report(1L, OpponentAnalysisStatus.PENDING, 10L));
         when(reportGenerator.generateWithMetadata(any())).thenReturn(generated());
         when(reportWriter.complete(eq(1L), any(), eq(11), eq(22), eq(33), any()))
@@ -96,7 +96,7 @@ class OpponentAnalysisApplicationServiceImplTest {
     void reusesCompletedReportWhenAllReuseKeysMatchAndForceRefreshIsFalse() {
         when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match(MatchStatus.SCHEDULED)));
         when(metricsService.getMetrics(42L, false)).thenReturn(metrics(10L));
-        when(reportRepository.findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(42L, 10L, "openrouter", "test-model", "v1", "zh-CN", OpponentAnalysisStatus.COMPLETED))
+        when(reportRepository.findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(42L, fingerprint(metrics(10L)), "openrouter", "test-model", "v1", "zh-CN", OpponentAnalysisStatus.COMPLETED))
                 .thenReturn(Optional.of(completedReport(7L, 10L)));
 
         var response = service.generate(42L, false);
@@ -104,14 +104,14 @@ class OpponentAnalysisApplicationServiceImplTest {
         assertThat(response.id()).isEqualTo(7L);
         assertThat(response.reused()).isTrue();
         verify(reportGenerator, never()).generateWithMetadata(any());
-        verify(reportWriter, never()).createPending(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(reportWriter, never()).createPending(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void forceRefreshSkipsReuseAndRegenerates() {
         when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match(MatchStatus.SCHEDULED)));
         when(metricsService.getMetrics(42L, true)).thenReturn(metrics(11L));
-        when(reportWriter.createPending(eq(42L), eq(13L), eq(11L), any(), any(), any(), any(), any(), any()))
+        when(reportWriter.createPending(eq(42L), eq(13L), eq(11L), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(report(2L, OpponentAnalysisStatus.PENDING, 11L));
         when(reportGenerator.generateWithMetadata(any())).thenReturn(generated());
         when(reportWriter.complete(eq(2L), any(), any(), any(), any(), any()))
@@ -120,7 +120,7 @@ class OpponentAnalysisApplicationServiceImplTest {
         var response = service.generate(42L, true);
 
         assertThat(response.snapshotId()).isEqualTo(11L);
-        verify(reportRepository, never()).findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(any(), any(), any(), any(), any(), any(), any());
+        verify(reportRepository, never()).findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -145,9 +145,9 @@ class OpponentAnalysisApplicationServiceImplTest {
     void aiFailureMarksReportFailedAndPropagatesStatus() {
         when(matchInfoRepository.findById(42L)).thenReturn(Optional.of(match(MatchStatus.SCHEDULED)));
         when(metricsService.getMetrics(42L, false)).thenReturn(metrics(10L));
-        when(reportRepository.findTopByMatchIdAndSnapshotIdAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(any(), any(), any(), any(), any(), any(), any()))
+        when(reportRepository.findTopByMatchIdAndMetricsInputFingerprintAndProviderAndModelAndPromptVersionAndLanguageAndStatusOrderByCreatedAtDescIdDesc(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Optional.empty());
-        when(reportWriter.createPending(eq(42L), eq(13L), eq(10L), any(), any(), any(), any(), any(), any()))
+        when(reportWriter.createPending(eq(42L), eq(13L), eq(10L), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(report(3L, OpponentAnalysisStatus.PENDING, 10L));
         OpponentAiException exception = new OpponentAiException(HttpStatus.TOO_MANY_REQUESTS, "AI_RATE_LIMITED", "rate limited");
         doThrow(exception).when(reportGenerator).generateWithMetadata(any());
@@ -173,6 +173,11 @@ class OpponentAnalysisApplicationServiceImplTest {
                 .thenReturn(List.of(completedReport(5L, 10L), report(6L, OpponentAnalysisStatus.FAILED, 10L)));
 
         assertThat(service.history(42L)).extracting("id").containsExactly(5L, 6L);
+    }
+
+    private String fingerprint(MatchOpponentMetricsResponse metrics) {
+        return new MetricsInputFingerprint(new JacksonConfig().objectMapper())
+                .fingerprint(new OpponentAnalysisInputMapper().toInput(metrics));
     }
 
     private MatchInfo match(MatchStatus status) {

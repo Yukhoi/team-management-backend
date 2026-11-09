@@ -64,7 +64,7 @@ class OpenRouterOpponentReportGeneratorTest {
 
         assertThat(result.provider()).isEqualTo("openrouter");
         assertThat(result.model()).isEqualTo("test-model");
-        assertThat(result.promptVersion()).isEqualTo("v1");
+        assertThat(result.promptVersion()).isEqualTo("v2");
         assertThat(result.report().threatLevel()).isEqualTo(ThreatLevel.MEDIUM);
         assertThat(result.report().summary()).isEqualTo("对手有一定威胁。");
         assertThat(result.usage().promptTokens()).isEqualTo(1);
@@ -527,6 +527,47 @@ class OpenRouterOpponentReportGeneratorTest {
 
         generator(builder.build(), properties).generate(input());
 
+        server.verify();
+    }
+
+    @Test
+    void sendsRecentFormAndSourceLimitationsWhilePreservingReportSchema() {
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andExpect(jsonPath("$.messages[0].content", containsString("CROSS_SEASON_ALLOWED")))
+                .andExpect(jsonPath("$.messages[0].content", containsString("历史排名")))
+                .andExpect(jsonPath("$.messages[0].content", containsString("录像")))
+                .andExpect(jsonPath("$.messages[1].content", containsString("recentFormSampleSize")))
+                .andExpect(jsonPath("$.messages[1].content", containsString("27")))
+                .andExpect(jsonPath("$.messages[1].content", containsString("Coach Docker Team")))
+                .andExpect(jsonPath("$.messages[1].content", containsString("goalsForPerGame")))
+                .andRespond(withSuccess(openRouterResponse(reportJson("LOW", "我方最近五场四胜一负，对手五场全败。"), 10, 20, 30), MediaType.APPLICATION_JSON));
+        var report = generator(builder.build(), configuredProperties()).generate(
+                new OpponentAnalysisInputMapper().toInput(RecentFormAiFixture.metrics()));
+        assertThat(report.summary()).contains("四胜一负");
+        server.verify();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"missingArray", "nullArray", "missingEvidence", "trailingJson", "numericSummary"})
+    void rejectsIncompleteOrMalformedOutputWithoutRelaxingExistingSchema(String invalidity) throws Exception {
+        var mapper = new JacksonConfig().objectMapper();
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(reportJson("LOW", "测试。"));
+        switch (invalidity) {
+            case "missingArray" -> body.remove("comparison");
+            case "nullArray" -> body.putNull("recommendations");
+            case "missingEvidence" -> ((com.fasterxml.jackson.databind.node.ObjectNode) body.at("/strengths/0")).remove("evidence");
+            case "numericSummary" -> body.put("summary", 123);
+        }
+        String content = mapper.writeValueAsString(body) + (invalidity.equals("trailingJson") ? " {}" : "");
+        RestClient.Builder builder = builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo("https://openrouter.test/chat/completions"))
+                .andRespond(withSuccess(openRouterResponse(content, null, null, null), MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> generator(builder.build(), configuredProperties()).generate(input()))
+                .isInstanceOf(OpponentAiException.class)
+                .satisfies(ex -> assertOpponentAiException(ex, HttpStatus.BAD_GATEWAY, "AI_INVALID_RESPONSE"));
         server.verify();
     }
 

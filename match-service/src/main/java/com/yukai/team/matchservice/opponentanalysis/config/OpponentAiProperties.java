@@ -33,7 +33,7 @@ public class OpponentAiProperties {
 
     private BigDecimal temperature = new BigDecimal("0.2");
 
-    private String promptVersion = "v1";
+    private String promptVersion = "v2";
 
     private boolean reasoningEnabled = false;
 

@@ -61,5 +61,5 @@ opponent-analysis:
     read-timeout: 45s
     max-output-tokens: ${OPENROUTER_MAX_OUTPUT_TOKENS:4000}
     temperature: 0.2
-    prompt-version: v1
+    prompt-version: v2
     reasoning-enabled: ${OPENROUTER_REASONING_ENABLED:false}

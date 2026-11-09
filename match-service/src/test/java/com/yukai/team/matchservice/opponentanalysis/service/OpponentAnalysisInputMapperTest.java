@@ -31,7 +31,8 @@ class OpponentAnalysisInputMapperTest {
         assertThat(input.match().season()).isEqualTo("2026");
         assertThat(input.match().homeAway()).isEqualTo(HomeAway.HOME);
         assertThat(input.ourTeam().name()).isEqualTo("YEXIAO PARIS FC");
-        assertThat(input.ourTeam().recentFive()).containsExactly("won", "lost", "draw", "won", "lost");
+        assertThat(input.ourTeam().recentFive()).isEmpty();
+        assertThat(input.ourTeam().recentForm().recentFormStatus()).isEqualTo("SOURCE_UNAVAILABLE");
         assertThat(input.opponent().name()).isEqualTo("ASTERIA");
         assertThat(input.leagueAverage().averageGoalsForPerGame()).isEqualByComparingTo("2.58");
         assertThat(input.leagueAverage().averageGoalsAgainstPerGame()).isEqualByComparingTo("2.58");
@@ -46,21 +47,84 @@ class OpponentAnalysisInputMapperTest {
                 "无可靠历史交锋数据"
         );
         String json = new JacksonConfig().objectMapper().writeValueAsString(input);
-        assertThat(json).doesNotContain("rawPayload", "payloadHash", "championnatId", "saisonId");
+        assertThat(json).doesNotContain("rawPayload", "fetchedAt", "cacheStatus");
+        assertThat(input.provenance().standingsPayloadHash()).isEqualTo("hash");
     }
 
-    private MatchOpponentMetricsResponse metrics() {
-        return new MatchOpponentMetricsResponse(
-                new MatchOpponentMetricsResponse.MatchContext(42L, 5L, "Paris League", "2026", 12L, "YEXIAO PARIS FC", 13L, "ASTERIA", OffsetDateTime.parse("2026-08-10T18:30:00Z"), HomeAway.HOME, MatchStatus.SCHEDULED),
-                team(12L, "YEXIAO PARIS FC", 12, 20, 6, 3, 17, 63, 134, "2.42", "5.15", "0.23", List.of("won", "lost", "draw", "won", "lost")),
-                team(13L, "ASTERIA", 3, 68, 22, 2, 2, 112, 40, "4.31", "1.54", "0.85", List.of("won", "won", "won", "draw", "won")),
-                new LeaguePerformanceMetrics(14, null, new BigDecimal("35.10"), new BigDecimal("1.35"), null, null, new BigDecimal("2.58"), new BigDecimal("2.58"), 112, 40, 68, new BigDecimal("0.42"), BigDecimal.ZERO),
-                new TeamComparisonMetrics(-48, 9, new BigDecimal("-0.62"), new BigDecimal("-1.20"), new BigDecimal("-1.89"), new BigDecimal("3.61"), -143, -2, new BigDecimal("-0.84"), new BigDecimal("0.88")),
-                new MatchOpponentMetricsResponse.DataSource("FLA", 1365L, 15L, 10L, "hash", OffsetDateTime.parse("2026-08-05T12:00:00Z"), CacheStatus.HIT, 21600L, false, "LATEST_TO_OLDEST", "CALCULATED")
-        );
+    @Test
+    void mapsMatchElevenRecentFormAndIdentityWithoutSwappingRoles() {
+        var input = mapper.toInput(RecentFormAiFixture.metrics());
+        var ours = input.ourTeam();
+        var opponent = input.opponent();
+        assertThat(input.provenance().matchId()).isEqualTo(11L);
+        assertThat(ours.identity().internalTeamId()).isEqualTo(12L);
+        assertThat(ours.identity().internalTeamName()).isEqualTo("Coach Docker Team");
+        assertThat(ours.identity().flaTeamId()).isEqualTo(270L);
+        assertThat(ours.identity().flaTeamName()).isEqualTo("YEXIAO PARIS FC");
+        assertThat(ours.identity().role()).isEqualTo("OUR_TEAM");
+        assertThat(opponent.identity().internalTeamName()).isEqualTo("FLA Test Team 1");
+        assertThat(opponent.identity().flaTeamId()).isEqualTo(204L);
+        assertThat(opponent.identity().role()).isEqualTo("OPPONENT");
+        assertThat(ours.recentFive()).containsExactly("lost", "won", "won", "won", "won");
+        assertThat(ours.recentForm().recentFormSampleSize()).isEqualTo(6);
+        assertThat(ours.recentForm().recentFive()).isEqualTo(new com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Window(5, 4, 0, 1, 27, 8, new BigDecimal("0.8")));
+        assertThat(opponent.recentForm().recentFive().wins()).isZero();
+        assertThat(opponent.recentForm().recentFive().losses()).isEqualTo(5);
+        assertThat(opponent.recentForm().recentFive().goalsFor()).isEqualTo(6);
+        assertThat(opponent.recentForm().recentFive().goalsAgainst()).isEqualTo(16);
+        assertThat(opponent.recentForm().recentFive().winRate()).isEqualByComparingTo("0");
+        assertThat(opponent.recentForm().recentFormSampleSize()).isEqualTo(5);
+        assertThat(ours.recentForm().currentLosingStreak()).isEqualTo(1);
+        assertThat(ours.recentForm().longestWinningStreak()).isEqualTo(5);
+        assertThat(opponent.recentForm().currentLosingStreak()).isEqualTo(5);
+        assertThat(input.comparison().recentFiveWinsDifference()).isEqualTo(4);
+        assertThat(input.comparison().recentFormComparisonAvailable()).isTrue();
     }
 
-    private TeamPerformanceMetrics team(Long id, String name, int rank, int points, int wins, int draws, int losses, int gf, int ga, String gfpg, String gapg, String winRate, List<String> recentFive) {
-        return new TeamPerformanceMetrics(id, id + 1000, name, rank, points, wins + draws + losses, wins, draws, losses, new BigDecimal(winRate), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE, gf, ga, gf - ga, new BigDecimal(gfpg), new BigDecimal(gapg), 0, 0, recentFive, recentFive, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    @Test
+    void unavailableDataRetainsNullsAndPreventsComparison() {
+        var legacy = mapper.toInput(metrics());
+        assertThat(legacy.ourTeam().recentForm().recentFormAvailable()).isFalse();
+        assertThat(legacy.ourTeam().recentForm().recentFive()).isNull();
+        assertThat(legacy.ourTeam().recentForm().currentWinningStreak()).isNull();
+        assertThat(legacy.ourTeam().recentForm().recentFormSampleSize()).isNull();
+        assertThat(legacy.comparison().recentFormComparisonAvailable()).isFalse();
+        assertThat(legacy.comparison().recentFiveWinsDifference()).isNull();
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SOURCE_UNAVAILABLE", "NO_COMPLETED_MATCHES", "MATCH_TIME_UNAVAILABLE"})
+    void oneAvailableTeamDoesNotBecomeAnUnsupportedQuantitativeComparison(String status) {
+        var json = new JacksonConfig().objectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode metrics = json.valueToTree(RecentFormAiFixture.metrics());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) metrics.at("/opponent/recentForm")).put("status", status);
+        var input = mapper.toInput(json.convertValue(metrics, MatchOpponentMetricsResponse.class));
+        assertThat(input.ourTeam().recentForm().recentFormAvailable()).isTrue();
+        assertThat(input.opponent().recentForm().recentFormStatus()).isEqualTo(status);
+        assertThat(input.opponent().recentForm().recentFive()).isNull();
+        assertThat(input.opponent().recentForm().recentTenStatistics()).isNull();
+        assertThat(input.comparison().recentFormComparisonAvailable()).isFalse();
+    }
+
+    @Test
+    void insufficientMatchesRetainActualSampleAndWindows() {
+        var json = new JacksonConfig().objectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode metrics = json.valueToTree(RecentFormAiFixture.metrics());
+        var form = (com.fasterxml.jackson.databind.node.ObjectNode) metrics.at("/ourTeam/recentForm");
+        form.put("status", "INSUFFICIENT_MATCHES").put("sampleSize", 2);
+        var window = new com.yukai.team.matchservice.opponentanalysis.dto.RecentFormMetrics.Window(2, 1, 0, 1, 3, 2, new BigDecimal("0.5"));
+        form.set("recentFive", json.valueToTree(window));
+        form.set("recentTen", json.valueToTree(window));
+        var team = (com.fasterxml.jackson.databind.node.ObjectNode) metrics.get("ourTeam");
+        team.set("recentFive", json.valueToTree(List.of("lost", "won")));
+        team.set("recentTen", json.valueToTree(List.of("lost", "won")));
+        var input = mapper.toInput(json.convertValue(metrics, MatchOpponentMetricsResponse.class));
+        assertThat(input.ourTeam().recentForm().recentFormAvailable()).isTrue();
+        assertThat(input.ourTeam().recentForm().recentFormSampleSize()).isEqualTo(2);
+        assertThat(input.ourTeam().recentForm().recentFive().sampleSize()).isEqualTo(2);
+        assertThat(input.ourTeam().recentFive()).hasSize(2);
+    }
+
+    static MatchOpponentMetricsResponse metrics() { return RecentFormAiFixture.baseMetrics(); }
+
 }
