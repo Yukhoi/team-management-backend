@@ -6,6 +6,7 @@ import lombok.Data;
 public class TournamentSnapshotResponse {
 
     private Long id;
+    private Long version;
     private String name;
     private String season;
     private String tournamentType;

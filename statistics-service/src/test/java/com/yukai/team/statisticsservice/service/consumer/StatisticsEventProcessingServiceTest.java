@@ -31,6 +31,9 @@ class StatisticsEventProcessingServiceTest {
     @Mock
     private StatisticsCacheInvalidationService statisticsCacheInvalidationService;
 
+    @Mock
+    private com.yukai.team.statisticsservice.service.projection.TournamentMetadataProjectionService tournamentMetadata;
+
     @InjectMocks
     private StatisticsEventProcessingService statisticsEventProcessingService;
 

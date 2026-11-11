@@ -6,6 +6,7 @@ import java.util.Arrays;
 
 @Schema(description = "Statistics projection event type")
 public enum StatisticsEventType {
+    TOURNAMENT_METADATA_SYNCHRONIZED("tournament.metadata.synchronized"),
     MATCH_CREATED("match.created"),
     MATCH_RESULT_UPDATED("match.result.updated"),
     MATCH_APPEARANCE_UPDATED("match.appearance.updated"),

@@ -89,13 +89,16 @@ public class TournamentServiceImpl implements TournamentService {
         tournament.setOrganizer(trimToNull(request.getOrganizer()));
         tournament.setDescription(trimToNull(request.getDescription()));
 
-        Tournament savedTournament = tournamentRepository.save(tournament);
+        Tournament savedTournament = tournamentRepository.saveAndFlush(tournament);
         outboxEventService.saveEvent(
                 AGGREGATE_TYPE_TOURNAMENT,
                 savedTournament.getId(),
                 "tournament.updated",
                 TournamentUpdatedEvent.builder()
                         .tournamentId(savedTournament.getId())
+                        .name(savedTournament.getName())
+                        .season(savedTournament.getSeason())
+                        .version(savedTournament.getVersion())
                         .build()
         );
         return toResponse(savedTournament);
@@ -250,6 +253,7 @@ public class TournamentServiceImpl implements TournamentService {
 
     private TournamentSnapshotResponse toSnapshotResponse(Tournament tournament) {
         return TournamentSnapshotResponse.builder()
+                .version(tournament.getVersion())
                 .id(tournament.getId())
                 .name(tournament.getName())
                 .season(tournament.getSeason())

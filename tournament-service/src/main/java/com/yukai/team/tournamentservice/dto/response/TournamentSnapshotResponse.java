@@ -17,6 +17,8 @@ public class TournamentSnapshotResponse {
 
     @Schema(description = "Tournament ID", example = "1")
     private Long id;
+    @Schema(description = "Persisted tournament version", example = "1")
+    private Long version;
     @Schema(description = "Tournament name", example = "Summer League")
     private String name;
     @Schema(description = "Season label", example = "2026")

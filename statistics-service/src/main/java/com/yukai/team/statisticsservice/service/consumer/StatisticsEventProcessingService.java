@@ -3,6 +3,7 @@ package com.yukai.team.statisticsservice.service.consumer;
 import com.yukai.team.statisticsservice.dto.event.StatisticsEventEnvelope;
 import com.yukai.team.statisticsservice.kafka.dispatcher.StatisticsEventDispatcher;
 import com.yukai.team.statisticsservice.service.cache.StatisticsCacheInvalidationService;
+import com.yukai.team.statisticsservice.service.projection.TournamentMetadataProjectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,12 +16,16 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class StatisticsEventProcessingService {
 
+    private final TournamentMetadataProjectionService tournamentMetadata;
     private final EventConsumeService eventConsumeService;
     private final StatisticsEventDispatcher statisticsEventDispatcher;
     private final StatisticsCacheInvalidationService statisticsCacheInvalidationService;
 
     @Transactional
     public boolean process(StatisticsEventEnvelope event) {
+        if (!"tournament.metadata.synchronized".equals(event.getEventType())) {
+            tournamentMetadata.normalizeMatchEvent(event);
+        }
         if (eventConsumeService.alreadyConsumed(event.getEventId(), EventConsumeService.CONSUMER_NAME)) {
             log.info("Duplicate event skipped, eventId={}, eventType={}", event.getEventId(), event.getEventType());
             return false;

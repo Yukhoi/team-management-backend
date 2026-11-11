@@ -83,7 +83,7 @@ class MatchStatisticsKafkaListenerTest {
         private final List<StatisticsEventEnvelope> processedEvents = new ArrayList<>();
 
         FakeStatisticsEventProcessingService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

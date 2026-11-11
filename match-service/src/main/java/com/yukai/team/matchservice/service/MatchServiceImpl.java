@@ -46,6 +46,7 @@ public class MatchServiceImpl implements MatchService {
     private final OutboxEventService outboxEventService;
     private final TeamServiceClient teamServiceClient;
     private final TournamentClient tournamentClient;
+    private final TournamentSyncService tournamentSyncService;
 
     public MatchServiceImpl(
             MatchInfoRepository matchInfoRepository,
@@ -53,7 +54,8 @@ public class MatchServiceImpl implements MatchService {
             MatchResultHistoryRepository matchResultHistoryRepository,
             OutboxEventService outboxEventService,
             TeamServiceClient teamServiceClient,
-            TournamentClient tournamentClient
+            TournamentClient tournamentClient,
+            TournamentSyncService tournamentSyncService
     ) {
         this.matchInfoRepository = matchInfoRepository;
         this.matchAppearanceRepository = matchAppearanceRepository;
@@ -61,6 +63,7 @@ public class MatchServiceImpl implements MatchService {
         this.outboxEventService = outboxEventService;
         this.teamServiceClient = teamServiceClient;
         this.tournamentClient = tournamentClient;
+        this.tournamentSyncService = tournamentSyncService;
     }
 
     @Override
@@ -73,6 +76,7 @@ public class MatchServiceImpl implements MatchService {
         Long opponentTeamId = resolveOpponentTeamId(request);
         ValidateMatchTeamsResponse teams = validateMatchTeams(request.getOurTeamId(), opponentTeamId);
         TournamentSnapshotResponse tournament = resolveTournamentSnapshot(request.getTournamentId());
+        tournament = tournamentSyncService.prepareForCreation(tournament);
         InternalTeamInfo ourTeam = teams.getOurTeam();
         InternalTeamInfo opponentTeam = teams.getOpponentTeam();
 

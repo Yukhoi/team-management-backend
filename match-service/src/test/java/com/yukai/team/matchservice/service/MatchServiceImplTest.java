@@ -77,7 +77,8 @@ class MatchServiceImplTest {
                 matchResultHistoryRepository,
                 outboxEventService,
                 teamServiceClient,
-                tournamentClient
+                tournamentClient,
+                org.mockito.Mockito.mock(TournamentSyncService.class)
         );
     }
 }

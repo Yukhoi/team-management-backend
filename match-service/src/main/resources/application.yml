@@ -44,6 +44,10 @@ app:
   kafka:
     topics:
       match-events: match-service.match-events
+      tournament-events: tournament-service.tournament-events
+  tournament-sync:
+    group-id: match-service-tournament-sync
+    auto-offset-reset: earliest
 
 opponent-analysis:
   fla:

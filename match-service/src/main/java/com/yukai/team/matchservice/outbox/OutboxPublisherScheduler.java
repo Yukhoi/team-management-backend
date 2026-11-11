@@ -56,7 +56,7 @@ public class OutboxPublisherScheduler {
     }
 
     private void publish(OutboxEvent event) {
-        String key = "match:" + event.getAggregateId();
+        String key = event.getAggregateType() + ":" + event.getAggregateId();
         try {
             kafkaTemplate.send(matchEventsTopic, key, event.getPayloadJson().toString()).get();
             markPublished(event.getId());

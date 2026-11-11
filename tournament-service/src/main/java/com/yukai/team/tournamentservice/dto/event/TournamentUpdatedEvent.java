@@ -12,4 +12,7 @@ import lombok.NoArgsConstructor;
 public class TournamentUpdatedEvent {
 
     private Long tournamentId;
+    private String name;
+    private String season;
+    private Long version;
 }
